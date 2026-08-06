@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1e8449">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FC 26">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+  <title>FC 26 Karriere-Helfer</title>
+</head>
+<body>
+
+  <!-- ============ HEADER ============ -->
+  <header id="appHeader">
+    <div class="header-row">
+      <span class="header-title">FC&nbsp;26 Karriere</span>
+      <span id="dbStatus" class="db-status">Datenbank lädt …</span>
+    </div>
+  </header>
+
+  <!-- ============ MAIN ============ -->
+  <main id="appMain">
+
+    <!-- ---- Suche ---- -->
+    <section id="tab-search" class="tab-panel active">
+      <h2 class="panel-title">Spieler-Suche</h2>
+      <p class="hint">Namen eintippen – Vorschläge erscheinen automatisch. Akzente sind egal („mbappe“ findet Mbappé), Nachname allein reicht.</p>
+      <div class="sticky-bar">
+        <input id="playerSearch" class="search-box" type="search" list="dlPlayers"
+               placeholder="🔍 Spieler suchen …" autocomplete="off">
+      </div>
+      <p id="searchInfo" class="result-info"></p>
+      <ul id="searchResults" class="card-list"></ul>
+      <button id="searchMore" class="add-btn" data-action="more-search" hidden>Weitere Treffer laden</button>
+    </section>
+
+    <!-- ---- Datenbank ---- -->
+    <section id="tab-db" class="tab-panel">
+      <h2 class="panel-title">Datenbank</h2>
+      <p class="hint">Alle Spieler zum Spielstart, filterbar wie im Spiel.</p>
+
+      <div class="sticky-bar">
+        <button class="tool-btn wide" data-action="toggle-filter">⚙️ Filter</button>
+        <button class="tool-btn" data-action="preset-wonderkids" title="Alter ≤ 21, Potenzial ≥ 85">✨ Wonderkids</button>
+        <button class="tool-btn" data-action="filter-reset" title="Filter zurücksetzen">↺</button>
+      </div>
+
+      <div id="filterBox" class="filter-box" hidden>
+        <label class="f-row"><span>Position</span>
+          <select id="fPos"><option value="">alle</option></select>
+        </label>
+        <div class="f-row"><span>Alter</span>
+          <input id="fAgeMin" type="number" min="15" max="45" placeholder="von">
+          <input id="fAgeMax" type="number" min="15" max="45" placeholder="bis">
+        </div>
+        <div class="f-row"><span>Overall</span>
+          <input id="fOvrMin" type="number" min="40" max="99" placeholder="von">
+          <input id="fOvrMax" type="number" min="40" max="99" placeholder="bis">
+        </div>
+        <div class="f-row"><span>Potenzial</span>
+          <input id="fPotMin" type="number" min="40" max="99" placeholder="von">
+          <input id="fPotMax" type="number" min="40" max="99" placeholder="bis">
+        </div>
+        <label class="f-row"><span>Liga</span>
+          <select id="fLeague"><option value="">alle</option></select>
+        </label>
+        <label class="f-row"><span>Nation</span>
+          <select id="fNation"><option value="">alle</option></select>
+        </label>
+        <label class="f-row"><span>Verein</span>
+          <input id="fClub" type="search" list="dlClubs" placeholder="alle" autocomplete="off">
+        </label>
+        <div class="f-row"><span>Fuß</span>
+          <select id="fFoot"><option value="">egal</option><option value="1">rechts</option><option value="0">links</option></select>
+          <select id="fWeak"><option value="">schw. Fuß</option><option value="3">3★+</option><option value="4">4★+</option><option value="5">5★</option></select>
+          <select id="fSkills"><option value="">Skills</option><option value="3">3★+</option><option value="4">4★+</option><option value="5">5★</option></select>
+        </div>
+        <div class="f-row"><span>max. Wert</span>
+          <input id="fValMax" type="number" min="0" step="1" placeholder="in Mio. €">
+          <span class="f-unit">Mio.</span>
+        </div>
+        <div class="f-row"><span>max. Gehalt</span>
+          <input id="fWageMax" type="number" min="0" step="1" placeholder="pro Woche €">
+          <span class="f-unit">€/W</span>
+        </div>
+        <label class="f-row"><span>Sortieren</span>
+          <select id="fSort">
+            <option value="pot">Potenzial ↓</option>
+            <option value="ovr">Overall ↓</option>
+            <option value="growth">Wachstum (POT − OVR) ↓</option>
+            <option value="age">Alter ↑</option>
+            <option value="value">Wert ↓</option>
+            <option value="wage">Gehalt ↑</option>
+          </select>
+        </label>
+      </div>
+
+      <p id="dbInfo" class="result-info"></p>
+      <ul id="dbResults" class="card-list"></ul>
+      <button id="dbMore" class="add-btn" data-action="more-db" hidden>Weitere Treffer laden</button>
+    </section>
+
+    <!-- ---- Team ---- -->
+    <section id="tab-team" class="tab-panel">
+      <h2 class="panel-title">Mein Team</h2>
+      <div class="subtab-bar">
+        <button class="subtab active" data-subtab="pitch">Aufstellung</button>
+        <button class="subtab" data-subtab="squad">Kader</button>
+        <button class="subtab" data-subtab="stats">Auswertung</button>
+      </div>
+
+      <div id="teamPitchView">
+        <label class="f-row formation-row"><span>Formation</span>
+          <select id="formationSel"></select>
+        </label>
+        <div id="pitch" class="pitch"></div>
+        <p class="hint legend">
+          <span class="fit-dot fit-main"></span> Hauptposition
+          <span class="fit-dot fit-alt"></span> Nebenposition
+          <span class="fit-dot fit-off"></span> ungewohnt
+        </p>
+      </div>
+
+      <div id="teamSquadView" hidden>
+        <p id="squadInfo" class="result-info"></p>
+        <ul id="squadList" class="card-list"></ul>
+        <button class="add-btn" data-action="squad-add">+ Spieler von Hand hinzufügen</button>
+      </div>
+
+      <div id="teamStatsView" hidden>
+        <div id="squadStats"></div>
+      </div>
+    </section>
+
+    <!-- ---- Jugend ---- -->
+    <section id="tab-youth" class="tab-panel">
+      <h2 class="panel-title">Jugendspieler</h2>
+      <p class="hint">Trage deine Akademie-Spieler mit Werten und Potenzial ein. Kennst du nur den Scout-Text, wähle den Potenzial-Bereich.</p>
+      <ul id="youthList" class="card-list"></ul>
+      <button class="add-btn" data-action="youth-add">+ Jugendspieler anlegen</button>
+
+      <div class="section-divider">Daten &amp; Backup</div>
+      <div class="data-tools">
+        <button class="tool-btn" data-action="export">⬇️ Export (JSON)</button>
+        <button class="tool-btn" data-action="import">⬆️ Import (JSON)</button>
+        <input type="file" id="importFile" accept="application/json" hidden>
+      </div>
+      <button class="danger-btn" data-action="reset">🔄 Alles zurücksetzen</button>
+    </section>
+
+    <!-- ---- Potenzial ---- -->
+    <section id="tab-potential" class="tab-panel">
+      <h2 class="panel-title">Potenzial verstehen</h2>
+      <p class="hint">Welcher Text im Kadermenü bedeutet welchen Zahlenbereich. Englisch, weil dein Spiel auf Englisch läuft.</p>
+      <div id="tierTable"></div>
+
+      <div class="section-divider">Scout-Bericht-Rechner</div>
+      <div class="calc-box">
+        <label class="f-row"><span>Text im Spiel</span>
+          <select id="calcTier"></select>
+        </label>
+        <div id="calcTierOut" class="calc-out"></div>
+      </div>
+      <div class="calc-box">
+        <div class="f-row"><span>Potenzial-Zahl</span>
+          <input id="calcNum" type="number" min="40" max="99" placeholder="z. B. 87">
+        </div>
+        <div id="calcNumOut" class="calc-out"></div>
+      </div>
+
+      <div class="section-divider">Gut zu wissen</div>
+      <ul id="potNotes" class="note-list"></ul>
+      <p id="sourceNote" class="hint"></p>
+    </section>
+
+  </main>
+
+  <!-- ============ BOTTOM NAV ============ -->
+  <nav id="bottomNav">
+    <button class="nav-btn active" data-nav="search"><span class="nav-ico">🔍</span><span>Suche</span></button>
+    <button class="nav-btn" data-nav="db"><span class="nav-ico">📋</span><span>Datenbank</span></button>
+    <button class="nav-btn" data-nav="team"><span class="nav-ico">⚽</span><span>Team</span></button>
+    <button class="nav-btn" data-nav="youth"><span class="nav-ico">🌱</span><span>Jugend</span></button>
+    <button class="nav-btn" data-nav="potential"><span class="nav-ico">📈</span><span>Potenzial</span></button>
+  </nav>
+
+  <!-- ============ MODAL ============ -->
+  <div id="modalOverlay" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true">
+      <div id="modalContent"></div>
+      <button class="modal-close" data-action="modal-close">Schließen</button>
+    </div>
+  </div>
+
+  <!-- ============ GENERISCHER EINGABE-DIALOG ============ -->
+  <div id="promptOverlay" class="modal-overlay" hidden>
+    <div class="modal prompt-modal">
+      <h3 id="promptTitle"></h3>
+      <div id="promptFields"></div>
+      <div class="prompt-actions">
+        <button class="tool-btn" data-action="prompt-cancel">Abbrechen</button>
+        <button class="primary-btn" data-action="prompt-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <datalist id="dlPlayers"></datalist>
+  <datalist id="dlClubs"></datalist>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

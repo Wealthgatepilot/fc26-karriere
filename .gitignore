@@ -1,0 +1,8 @@
+# Rohdaten (10 MB CSV) – wird per tools/generate-fcdata.ps1 nach fcdata.js umgewandelt
+*.csv
+
+# Windows / Editor
+Thumbs.db
+desktop.ini
+.vscode/
+*.swp
