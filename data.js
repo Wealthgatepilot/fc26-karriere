@@ -136,7 +136,7 @@ const POS_GRUPPEN = {
 };
 
 const DEFAULT_DATA = {
-  squad:    { formation: '4-3-3', players: [], lineup: {} },
+  squad:    { formation: '4-3-3', club: '', players: [], lineup: {} },
   youth:    [],
   settings: { saison: 1 }
 };

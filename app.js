@@ -439,6 +439,11 @@
   }
 
   function renderTeam() {
+    const besetzt = Object.keys(state.squad.lineup).length;
+    $('#clubInfo').textContent = state.squad.players.length
+      ? (state.squad.club ? state.squad.club + ' · ' : '') +
+        state.squad.players.length + ' Spieler · Startelf ' + besetzt + '/11'
+      : 'Noch kein Kader – „Verein laden“ holt eine komplette Mannschaft aus der Datenbank.';
     if (teamView === 'pitch') renderPitch();
     else if (teamView === 'squad') renderSquadList();
     else renderSquadStats();
@@ -493,6 +498,81 @@
     const p = FC_PLAYERS[i];
     addToSquad({ name: p[F.SHORT], pos: pPos(i), ovr: p[F.OVR], pot: p[F.POT], age: p[F.AGE], club: pClub(i), src: 'db' });
     closeModal();
+  }
+
+  // ---- Kompletten Vereinskader aus der Datenbank übernehmen ----
+  function loadClub() {
+    if (!DB.ready) { setStatus('Datenbank lädt …', ''); loadDb(loadClub); return; }
+    openPrompt('Verein laden', [
+      { k: 'club', label: 'Verein', value: state.squad.club || '', list: 'dlClubs',
+        hint: 'Tippen und aus der Vorschlagsliste wählen – ' + FC_CLUBS.length + ' Vereine.' },
+      { k: 'mode', label: 'Vorhandener Kader', type: 'select', value: 'replace',
+        options: [{ v: 'replace', t: 'ersetzen' }, { v: 'add', t: 'behalten und ergänzen' }] }
+    ], v => {
+      if (!v.club) return;
+      const q = norm(v.club);
+      let ci = FC_CLUBS.findIndex(c => norm(c) === q);
+      if (ci < 0) {
+        const treffer = FC_CLUBS.map((c, i) => [c, i]).filter(x => norm(x[0]).indexOf(q) >= 0);
+        if (treffer.length === 1) ci = treffer[0][1];
+        else if (!treffer.length) { alert('Kein Verein gefunden für „' + v.club + '“.'); return; }
+        else { alert('Mehrere Vereine passen auf „' + v.club + '“:\n\n' +
+                     treffer.slice(0, 10).map(x => '· ' + x[0]).join('\n') +
+                     (treffer.length > 10 ? '\n… und ' + (treffer.length - 10) + ' weitere' : '') +
+                     '\n\nBitte genauer eingeben.'); return; }
+      }
+
+      const idx = [];
+      for (let i = 0; i < FC_PLAYERS.length; i++) if (FC_PLAYERS[i][F.CLUB] === ci) idx.push(i);
+      idx.sort((a, b) => FC_PLAYERS[b][F.OVR] - FC_PLAYERS[a][F.OVR]);
+
+      const neu = idx.map(i => ({
+        id: uid(), name: FC_PLAYERS[i][F.SHORT], pos: pPos(i), ovr: FC_PLAYERS[i][F.OVR],
+        pot: FC_PLAYERS[i][F.POT], age: FC_PLAYERS[i][F.AGE], club: FC_CLUBS[ci], src: 'db'
+      }));
+
+      if (v.mode === 'replace') {
+        if (state.squad.players.length &&
+            !confirm('Der bisherige Kader (' + state.squad.players.length + ' Spieler) und die Aufstellung werden ersetzt. Fortfahren?')) return;
+        state.squad.players = neu;
+        state.squad.lineup = {};
+      } else {
+        const da = new Set(state.squad.players.map(p => p.name + '|' + p.ovr));
+        neu.forEach(p => { if (!da.has(p.name + '|' + p.ovr)) state.squad.players.push(p); });
+      }
+      state.squad.club = FC_CLUBS[ci];
+      save('squad');
+      renderTeam();
+      alert(neu.length + ' Spieler von ' + FC_CLUBS[ci] + ' übernommen.' +
+            (v.mode === 'replace' ? '\n\nTipp: „🪄 Elf aufstellen“ besetzt die Startelf automatisch.' : ''));
+    });
+  }
+
+  // ---- Startelf automatisch besetzen: erst Hauptpositionen, dann Neben, dann Rest ----
+  function autoLineup() {
+    if (!state.squad.players.length) { alert('Der Kader ist leer.'); return; }
+    const slots = FORMATIONS[state.squad.formation];
+    // Alle Platz-Spieler-Paare bewerten und global nach Punktzahl vergeben.
+    // Slot für Slot durchzugehen wäre schlechter: dann schnappt der frühe LB-Platz
+    // einen Mittelfeldspieler weg und im Zentrum bleibt nur ein Reservist übrig.
+    // Punkte = Overall + Bonus für die erstgenannte (echte) Position − Abzug fürs Aushelfen.
+    const abzug = { 'fit-main': 0, 'fit-alt': 12, 'fit-off': 30 };
+    const paare = [];
+    slots.forEach((s, i) => {
+      state.squad.players.forEach(p => {
+        const primaer = (p.pos && p.pos[0]) === s.p ? 3 : 0;
+        paare.push({ i: i, id: p.id, score: p.ovr + primaer - abzug[fitOf(p, s.p)] });
+      });
+    });
+    paare.sort((a, b) => b.score - a.score);
+
+    const lineup = {}, belegt = {};
+    paare.forEach(x => {
+      if (lineup[x.i] == null && !belegt[x.id]) { lineup[x.i] = x.id; belegt[x.id] = true; }
+    });
+    state.squad.lineup = lineup;
+    save('squad');
+    if (teamView !== 'pitch') switchTeamView('pitch'); else renderTeam();
   }
 
   function squadEdit(id) {
@@ -765,7 +845,8 @@
       } else if (f.type === 'textarea') {
         input = '<textarea data-pk="' + f.k + '" rows="2">' + esc(v) + '</textarea>';
       } else {
-        input = '<input data-pk="' + f.k + '" type="' + (f.type || 'text') + '" value="' + esc(v) + '">';
+        input = '<input data-pk="' + f.k + '" type="' + (f.type || 'text') + '" value="' + esc(v) + '"' +
+                (f.list ? ' list="' + f.list + '" autocomplete="off"' : '') + '>';
       }
       return '<div class="pf"><label>' + esc(f.label) + '</label>' + input +
         (f.hint ? '<div class="pf-hint">' + esc(f.hint) + '</div>' : '') + '</div>';
@@ -876,6 +957,8 @@
       case 'slot':        openSlot(slot); break;
       case 'slot-set':    setSlot(slot, id); break;
       case 'slot-clear':  delete state.squad.lineup[slot]; save('squad'); closeModal(); renderTeam(); break;
+      case 'load-club':   loadClub(); break;
+      case 'auto-lineup': autoLineup(); break;
       case 'squad-add':   squadEdit(null); break;
       case 'squad-edit':  squadEdit(id); break;
       case 'squad-del':   squadDel(id); break;
@@ -916,7 +999,10 @@
   switchTab('search');
   loadDb();   // im Hintergrund, die App ist währenddessen bedienbar
 
-  if ('serviceWorker' in navigator) {
+  // Service Worker nur im echten Betrieb registrieren. Lokal ist er cache-first und
+  // liefert hartnäckig alte Dateien aus - beim Entwickeln stört das mehr, als es hilft.
+  const lokal = ['localhost', '127.0.0.1', ''].indexOf(location.hostname) >= 0;
+  if ('serviceWorker' in navigator && !lokal) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
   }
 })();

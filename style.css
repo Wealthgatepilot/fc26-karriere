@@ -125,6 +125,7 @@ input, select { font-family: inherit; font-size: 16px; }
   background: var(--bg-elev); border-radius: 8px; width: 36px; height: 36px; min-width: 36px;
   font-size: 1rem; display: flex; align-items: center; justify-content: center;
 }
+.team-tools { display: flex; gap: 8px; margin-bottom: 10px; }
 .data-tools { display: flex; gap: 8px; }
 .data-tools .tool-btn { flex: 1; }
 
