@@ -7,7 +7,7 @@
   Stand:   fifa_version 26, update 4, 19.09.2025 = Spielstart
 
   Ausgabeformat (kompakt, damit die Datei auf dem Handy schnell laedt):
-    FC_LEAGUES  = [ [Name, Level], ... ]
+    FC_LEAGUES  = [ [Name, Level, Land], ... ]   (je league_id, nicht je Name!)
     FC_CLUBS    = [ Name, ... ]
     FC_NATIONS  = [ Name, ... ]
     FC_POS      = [ "GK", "CB", ... ]
@@ -92,8 +92,9 @@ $clubs    = New-Object System.Collections.Generic.List[string]
 $clubMap  = @{}
 $nations   = New-Object System.Collections.Generic.List[string]
 $nationMap = @{}
-$leagues   = New-Object System.Collections.Generic.List[object]
-$leagueMap = @{}
+$leagues      = New-Object System.Collections.Generic.List[object]
+$leagueMap    = @{}
+$ligaNationen = @{}   # je Liga: Nationalitaet -> Anzahl
 
 function Get-Index($name, $list, $map) {
   if ([string]::IsNullOrWhiteSpace($name)) { return -1 }
@@ -134,14 +135,21 @@ foreach ($r in $rows) {
   $ci = Get-Index $r.club_name        $clubs   $clubMap
   $ni = Get-Index $r.nationality_name $nations $nationMap
 
+  # Nach league_id gruppieren, NICHT nach Namen: mehrere Ligen heissen gleich
+  # (Bundesliga = Deutschland + Oesterreich, Serie A = Italien + Ecuador usw.)
   $li = -1
-  if (-not [string]::IsNullOrWhiteSpace($r.league_name)) {
-    if ($leagueMap.ContainsKey($r.league_name)) { $li = $leagueMap[$r.league_name] }
+  $lid = ($r.league_id -replace '\.0$', '').Trim()
+  if ($lid -and -not [string]::IsNullOrWhiteSpace($r.league_name)) {
+    if ($leagueMap.ContainsKey($lid)) { $li = $leagueMap[$lid] }
     else {
-      $leagues.Add([pscustomobject]@{ Name = $r.league_name; Level = (ConvertTo-IntOrZero $r.league_level) }) | Out-Null
+      $leagues.Add([pscustomobject]@{ Id = $lid; Name = $r.league_name; Level = (ConvertTo-IntOrZero $r.league_level); Land = '' }) | Out-Null
       $li = $leagues.Count - 1
-      $leagueMap[$r.league_name] = $li
+      $leagueMap[$lid] = $li
     }
+    # Nationalitaeten mitzaehlen, um gleichnamige Ligen spaeter unterscheiden zu koennen
+    if (-not $ligaNationen.ContainsKey($li)) { $ligaNationen[$li] = @{} }
+    $nat = $r.nationality_name
+    if ($nat) { $ligaNationen[$li][$nat] = [int]$ligaNationen[$li][$nat] + 1 }
   }
 
   # Langname nur speichern, wenn er zusaetzliche Information traegt (spart ~0,3 MB)
@@ -161,6 +169,18 @@ foreach ($r in $rows) {
   $entries.Add($line) | Out-Null
 }
 
+# --- Land je Liga bestimmen ---
+# Gleichnamige Ligen (Bundesliga DE/AT, Serie A IT/EC, Pro League SA/BE/AE ...) lassen sich
+# nur so auseinanderhalten. Die haeufigste Nationalitaet trifft das Land zuverlaessig.
+for ($i = 0; $i -lt $leagues.Count; $i++) {
+  if (-not $ligaNationen.ContainsKey($i)) { continue }
+  $best = $null; $bestN = 0
+  foreach ($k in $ligaNationen[$i].Keys) {
+    if ($ligaNationen[$i][$k] -gt $bestN) { $bestN = $ligaNationen[$i][$k]; $best = $k }
+  }
+  $leagues[$i].Land = $best
+}
+
 # --- Datei schreiben ---
 $out = New-Object System.Text.StringBuilder
 [void]$out.Append("// AUTO-GENERIERT - nicht von Hand editieren.`n")
@@ -171,7 +191,10 @@ $out = New-Object System.Text.StringBuilder
 
 [void]$out.Append(("const FC_META = {{ stand: {0}, count: {1}, quelle: ""EAFC26-DataHub (Kaggle)"" }};`n`n" -f (ConvertTo-JsString $stand), $entries.Count))
 [void]$out.Append("const FC_POS = [" + (($posOrder | ForEach-Object { ConvertTo-JsString $_ }) -join ',') + "];`n`n")
-[void]$out.Append("const FC_LEAGUES = [`n" + (($leagues | ForEach-Object { '[' + (ConvertTo-JsString $_.Name) + ',' + $_.Level + ']' }) -join ",`n") + "`n];`n`n")
+[void]$out.Append("// [Name, Level, Land] - je league_id, damit gleichnamige Ligen getrennt bleiben`n")
+[void]$out.Append("const FC_LEAGUES = [`n" + (($leagues | ForEach-Object {
+  '[' + (ConvertTo-JsString $_.Name) + ',' + $_.Level + ',' + (ConvertTo-JsString $_.Land) + ']'
+}) -join ",`n") + "`n];`n`n")
 [void]$out.Append("const FC_CLUBS = [`n" + (($clubs   | ForEach-Object { ConvertTo-JsString $_ }) -join ',') + "`n];`n`n")
 [void]$out.Append("const FC_NATIONS = [`n" + (($nations | ForEach-Object { ConvertTo-JsString $_ }) -join ',') + "`n];`n`n")
 [void]$out.Append("// [short, long, [pos], ovr, pot, age, club, liga, nation, wert, gehalt, fuss(0=L/1=R), weakFoot, skills, ruf]`n")

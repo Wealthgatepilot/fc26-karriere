@@ -36,8 +36,11 @@ Die CSV wird nach `%TEMP%\eafc26-cache` geladen und dort wiederverwendet; `-Refr
 ## Datenquellen
 Spielerwerte aus dem öffentlichen Datensatz [EAFC26-DataHub](https://github.com/ismailoksuz/EAFC26-DataHub)
 (Ursprung: Kaggle *FC 26 (FIFA 26) Player Data*), Stand **FC 26, 19.09.2025** – also der Zustand zum Spielstart.
+18.405 Spieler, 662 Vereine, 51 Ligen; jeder Verein mit mindestens 16 Spielern.
 
 > ⚠️ Das ist eine Community-Extraktion, **keine offizielle EA-Datei**. Einzelne Werte können abweichen.
+> Weil es ein Foto vom Spielstart ist, fehlen Spieler, die EA erst per Squad-Update nachgereicht hat
+> (z. B. Wisdom Mike bei Bayern). Solche Spieler legst du im Kader über „✏️ Neu erstellen“ selbst an.
 
 Die Schritte zum Leih-Glitch stammen von [earlygame.com](https://earlygame.com/de/guides/fifa/ea-fc-26-karrieremodus-loan-glitch-erklaert-so-entwickelst-du-jeden-jugendspieler-zum-weltklasse-talent)
 und soccergaming.com; beim idealen Kandidaten widersprechen sich die beiden, was in der App auch so dasteht.

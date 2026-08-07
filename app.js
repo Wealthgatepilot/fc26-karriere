@@ -131,7 +131,21 @@
   const F = { SHORT: 0, LONG: 1, POS: 2, OVR: 3, POT: 4, AGE: 5, CLUB: 6, LEAGUE: 7, NAT: 8, VALUE: 9, WAGE: 10, FOOT: 11, WEAK: 12, SKILLS: 13, REP: 14 };
   const pPos    = i => FC_PLAYERS[i][F.POS].map(x => FC_POS[x]);
   const pClub   = i => FC_PLAYERS[i][F.CLUB]   >= 0 ? FC_CLUBS[FC_PLAYERS[i][F.CLUB]]         : 'vereinslos';
-  const pLeague = i => FC_PLAYERS[i][F.LEAGUE] >= 0 ? FC_LEAGUES[FC_PLAYERS[i][F.LEAGUE]][0]  : '–';
+  const pLeague = i => FC_PLAYERS[i][F.LEAGUE] >= 0 ? leagueLabel(FC_PLAYERS[i][F.LEAGUE]) : '–';
+
+  // Mehrere Ligen heißen gleich (Bundesliga DE/AT, Serie A IT/EC, Pro League SA/BE/AE …).
+  // Nur dort wird das Land angehängt – sonst stünde überall unnötig „(England)“.
+  let mehrfachNamen = null;
+  function leagueLabel(idx) {
+    const l = FC_LEAGUES[idx];
+    if (!l) return '–';
+    if (!mehrfachNamen) {
+      const zaehler = {};
+      FC_LEAGUES.forEach(x => zaehler[x[0]] = (zaehler[x[0]] || 0) + 1);
+      mehrfachNamen = zaehler;
+    }
+    return mehrfachNamen[l[0]] > 1 && l[2] ? l[0] + ' (' + l[2] + ')' : l[0];
+  }
   const pNation = i => FC_PLAYERS[i][F.NAT]    >= 0 ? FC_NATIONS[FC_PLAYERS[i][F.NAT]]        : '–';
 
   // ===================== Potenzial-Einordnung =====================
@@ -304,9 +318,9 @@
     $('#fPos').innerHTML = '<option value="">alle</option>' +
       FC_POS.map(p => '<option value="' + p + '">' + p + '</option>').join('');
     $('#fLeague').innerHTML = '<option value="">alle</option>' +
-      FC_LEAGUES.map((l, i) => ({ i: i, name: l[0], lvl: l[1] }))
+      FC_LEAGUES.map((l, i) => ({ i: i, name: leagueLabel(i), lvl: l[1] }))
         .sort((a, b) => a.name.localeCompare(b.name, 'de'))
-        .map(l => '<option value="' + l.i + '">' + esc(l.name) + (l.lvl > 1 ? ' (Liga ' + l.lvl + ')' : '') + '</option>').join('');
+        .map(l => '<option value="' + l.i + '">' + esc(l.name) + (l.lvl > 1 ? ' · Liga ' + l.lvl : '') + '</option>').join('');
     $('#fNation').innerHTML = '<option value="">alle</option>' +
       FC_NATIONS.map((n, i) => ({ i: i, name: n }))
         .sort((a, b) => a.name.localeCompare(b.name, 'de'))
