@@ -247,6 +247,10 @@ input, select { font-family: inherit; font-size: 16px; }
 /* ============ Jugend ============ */
 .y-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .y-head { display: flex; align-items: center; gap: 10px; }
+.promo-badge {
+  font-size: .64rem; font-weight: 700; background: var(--accent); color: #fff;
+  border-radius: 6px; padding: 1px 6px; vertical-align: middle; white-space: nowrap;
+}
 .y-actions { display: flex; gap: 4px; }
 .growth-bar {
   position: relative; height: 12px; border-radius: 6px; background: var(--bg-elev);

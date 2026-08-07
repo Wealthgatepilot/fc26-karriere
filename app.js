@@ -124,9 +124,9 @@
   }
 
   // ===================== Spielerkarte (gemeinsame Darstellung) =====================
-  function cardHtml(i) {
+  function cardHtml(i, action) {
     const p = FC_PLAYERS[i], ovr = p[F.OVR], pot = p[F.POT], wachs = pot - ovr;
-    return '<li><button class="p-card" data-action="open-player" data-i="' + i + '">' +
+    return '<li><button class="p-card" data-action="' + (action || 'open-player') + '" data-i="' + i + '">' +
       '<div class="p-main">' +
         '<div class="p-name">' + esc(p[F.SHORT]) + '</div>' +
         '<div class="p-meta">' + pPos(i).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
@@ -141,9 +141,24 @@
       '</div></button></li>';
   }
 
-  function renderList(ul, list, shown) {
-    ul.innerHTML = list.slice(0, shown).map(cardHtml).join('') ||
+  function renderList(ul, list, shown, action) {
+    ul.innerHTML = list.slice(0, shown).map(i => cardHtml(i, action)).join('') ||
       '<li class="hint">Keine Treffer.</li>';
+  }
+
+  // Namenssuche über den Suchindex – von mehreren Stellen genutzt
+  function findPlayers(q) {
+    const hits = [];
+    for (let i = 0; i < DB.index.length; i++) {
+      const s = DB.index[i];
+      const pos = s.indexOf(q);
+      if (pos < 0) continue;
+      // Treffer am Wortanfang zuerst, danach nach Overall
+      const rang = pos === 0 ? 0 : (s[pos - 1] === ' ' ? 1 : 2);
+      hits.push([rang, -FC_PLAYERS[i][F.OVR], i]);
+    }
+    hits.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    return hits.map(h => h[2]);
   }
 
   // ===================== Tab: Suche =====================
@@ -162,17 +177,7 @@
     }
     if (!DB.ready) { info.textContent = 'Datenbank lädt …'; loadDb(runSearch); return; }
 
-    const hits = [];
-    for (let i = 0; i < DB.index.length; i++) {
-      const s = DB.index[i];
-      const pos = s.indexOf(q);
-      if (pos < 0) continue;
-      // Treffer am Wortanfang zuerst, danach nach Overall
-      const rank = pos === 0 ? 0 : (s[pos - 1] === ' ' ? 1 : 2);
-      hits.push([rank, -FC_PLAYERS[i][F.OVR], i]);
-    }
-    hits.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    searchHits = hits.map(h => h[2]);
+    searchHits = findPlayers(q);
     searchShown = Math.min(PAGE, searchHits.length);
 
     info.textContent = searchHits.length
@@ -484,20 +489,54 @@
     save('squad'); closeModal(); renderTeam();
   }
 
-  function addToSquad(obj) {
+  function addToSquad(obj, still) {
     if (state.squad.players.some(p => p.name === obj.name && p.ovr === obj.ovr)) {
-      alert(obj.name + ' ist schon im Kader.');
-      return;
+      if (!still) alert(obj.name + ' ist schon im Kader.');
+      return false;
     }
     state.squad.players.push(Object.assign({ id: uid() }, obj));
     save('squad');
-    alert(obj.name + ' wurde in den Kader übernommen.');
+    if (!still) alert(obj.name + ' wurde in den Kader übernommen.');
+    return true;
   }
 
+  const dbPlayerObj = i => ({
+    name: FC_PLAYERS[i][F.SHORT], pos: pPos(i), ovr: FC_PLAYERS[i][F.OVR],
+    pot: FC_PLAYERS[i][F.POT], age: FC_PLAYERS[i][F.AGE], club: pClub(i), src: 'db'
+  });
+
   function squadFromDb(i) {
-    const p = FC_PLAYERS[i];
-    addToSquad({ name: p[F.SHORT], pos: pPos(i), ovr: p[F.OVR], pot: p[F.POT], age: p[F.AGE], club: pClub(i), src: 'db' });
+    addToSquad(dbPlayerObj(i));
     closeModal();
+  }
+
+  // ---- Einzelne Spieler per Suche in den Kader holen ----
+  function openSquadSearch() {
+    if (!DB.ready) { setStatus('Datenbank lädt …', ''); loadDb(openSquadSearch); return; }
+    openModal('<h3>Spieler in den Kader holen</h3>' +
+      '<input id="squadSearch" class="search-box" type="search" placeholder="🔍 Name eintippen …" autocomplete="off">' +
+      '<p id="squadSearchInfo" class="result-info">Mindestens 2 Zeichen – Akzente sind egal, Nachname genügt.</p>' +
+      '<ul id="squadSearchResults" class="card-list"></ul>');
+    setTimeout(() => { const el = $('#squadSearch'); if (el) el.focus(); }, 60);
+  }
+
+  function runSquadSearch() {
+    const el = $('#squadSearch');
+    if (!el) return;
+    const q = norm(el.value), info = $('#squadSearchInfo'), ul = $('#squadSearchResults');
+    if (q.length < 2) { ul.innerHTML = ''; info.textContent = 'Mindestens 2 Zeichen – Akzente sind egal, Nachname genügt.'; return; }
+    const hits = findPlayers(q);
+    info.textContent = hits.length ? hits.length.toLocaleString('de-DE') + ' Treffer – zum Hinzufügen antippen' : 'Keine Treffer.';
+    renderList(ul, hits, 25, 'squad-add-db');
+  }
+
+  function squadAddFromSearch(i) {
+    const obj = dbPlayerObj(i);
+    const neu = addToSquad(obj, true);
+    $('#squadSearchInfo').textContent = neu
+      ? '✅ ' + obj.name + ' hinzugefügt – Kader: ' + state.squad.players.length + ' Spieler'
+      : 'ℹ️ ' + obj.name + ' ist schon im Kader.';
+    renderTeam();
   }
 
   // ---- Kompletten Vereinskader aus der Datenbank übernehmen ----
@@ -575,27 +614,28 @@
     if (teamView !== 'pitch') switchTeamView('pitch'); else renderTeam();
   }
 
+  // Nur Bearbeiten – neue Spieler kommen aus der Datenbank oder aus dem Jugend-Tab
   function squadEdit(id) {
-    const p = id ? findSquad(id) : null;
-    openPrompt(p ? 'Spieler bearbeiten' : 'Spieler hinzufügen', [
-      { k: 'name', label: 'Name', value: p ? p.name : '' },
-      { k: 'pos',  label: 'Positionen (Komma-getrennt, z. B. ST, LW)', value: p ? (p.pos || []).join(', ') : '' },
-      { k: 'age',  label: 'Alter', type: 'number', value: p ? p.age : '' },
-      { k: 'ovr',  label: 'Overall', type: 'number', value: p ? p.ovr : '' },
-      { k: 'pot',  label: 'Potenzial', type: 'number', value: p ? p.pot : '' },
-      { k: 'club', label: 'Verein (optional)', value: p ? p.club || '' : '' }
+    const p = findSquad(id);
+    if (!p) return;
+    openPrompt('Spieler bearbeiten', [
+      { k: 'name', label: 'Name', value: p.name },
+      { k: 'pos',  label: 'Positionen (Komma-getrennt, z. B. ST, LW)', value: (p.pos || []).join(', ') },
+      { k: 'age',  label: 'Alter', type: 'number', value: p.age },
+      { k: 'ovr',  label: 'Overall', type: 'number', value: p.ovr },
+      { k: 'pot',  label: 'Potenzial', type: 'number', value: p.pot },
+      { k: 'club', label: 'Verein (optional)', value: p.club || '' }
     ], v => {
       if (!v.name) return;
-      const data = {
+      const ovr = parseInt(v.ovr, 10) || 0;
+      Object.assign(p, {
         name: v.name,
         pos: parsePositions(v.pos),
         age: parseInt(v.age, 10) || 0,
-        ovr: parseInt(v.ovr, 10) || 0,
-        pot: Math.max(parseInt(v.pot, 10) || 0, parseInt(v.ovr, 10) || 0),
+        ovr: ovr,
+        pot: Math.max(parseInt(v.pot, 10) || 0, ovr),
         club: v.club
-      };
-      if (p) Object.assign(p, data);
-      else state.squad.players.push(Object.assign({ id: uid(), src: 'manual' }, data));
+      });
       save('squad'); renderTeam();
     });
   }
@@ -611,6 +651,7 @@
     state.squad.players = state.squad.players.filter(x => x.id !== id);
     Object.keys(state.squad.lineup).forEach(k => { if (state.squad.lineup[k] === id) delete state.squad.lineup[k]; });
     save('squad'); renderTeam();
+    if (p.youthId) renderYouth();   // Hochzieh-Knopf im Jugend-Tab wieder anbieten
   }
 
   // ===================== Tab: Jugend =====================
@@ -644,9 +685,12 @@
         }).join('') + '</ul>';
       }
 
+      const hoch = !!promotedOf(y.id);
+
       return '<li class="y-card">' +
         '<div class="y-head">' +
-          '<div class="p-main"><div class="p-name">' + esc(y.name) + '</div>' +
+          '<div class="p-main"><div class="p-name">' + esc(y.name) +
+            (hoch ? ' <span class="promo-badge">⬆️ Senioren</span>' : '') + '</div>' +
             '<div class="p-meta">' + (y.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
             ' ' + (y.age || '?') + ' J.</div></div>' +
           '<div class="p-rat"><span class="p-ovr ' + ratClass(y.ovr) + '">' + y.ovr + '</span>' +
@@ -665,7 +709,7 @@
         '<div class="y-actions" style="margin-top:10px">' +
           '<button class="mini-btn" data-action="youth-season" data-id="' + y.id + '" title="Saison eintragen">➕</button>' +
           '<button class="mini-btn" data-action="youth-compare" data-id="' + y.id + '" title="Mit Datenbank vergleichen">⚖️</button>' +
-          '<button class="mini-btn" data-action="youth-to-squad" data-id="' + y.id + '" title="In den Kader">⚽</button>' +
+          (hoch ? '' : '<button class="mini-btn" data-action="youth-promote" data-id="' + y.id + '" title="In die Senioren hochziehen">⬆️</button>') +
           '<button class="mini-btn" data-action="youth-edit" data-id="' + y.id + '" title="Bearbeiten">✏️</button>' +
           '<button class="mini-btn" data-action="youth-del" data-id="' + y.id + '" title="Löschen">🗑️</button>' +
         '</div></li>';
@@ -700,7 +744,7 @@
       else { potMin = potMax = ovr; }
 
       const data = { name: v.name, pos: parsePositions(v.pos), age: parseInt(v.age, 10) || 0, ovr: ovr, potMin: potMin, potMax: potMax, note: v.note };
-      if (y) Object.assign(y, data);
+      if (y) { Object.assign(y, data); syncPromoted(y); }
       else state.youth.push(Object.assign({ id: uid(), seasons: [] }, data));
       save('youth'); renderYouth();
     });
@@ -725,6 +769,7 @@
       if (last.age) y.age = last.age;
       if (y.potMax < y.ovr) y.potMax = y.ovr;
       if (y.potMin < y.ovr) y.potMin = y.ovr;
+      syncPromoted(y);
       save('youth'); renderYouth();
     });
   }
@@ -764,10 +809,27 @@
     openModal(html);
   }
 
-  function youthToSquad(id) {
+  // ---- Jugendspieler in die Senioren hochziehen ----
+  const promotedOf = id => state.squad.players.find(p => p.youthId === id);
+
+  function youthPromote(id) {
     const y = findYouth(id);
     if (!y) return;
-    addToSquad({ name: y.name, pos: y.pos, ovr: y.ovr, pot: y.potMax, age: y.age, club: 'Jugendakademie', src: 'youth' });
+    if (promotedOf(id)) { alert(y.name + ' steht schon im Seniorenkader.'); return; }
+    state.squad.players.push({
+      id: uid(), youthId: y.id, name: y.name, pos: y.pos, ovr: y.ovr, pot: y.potMax,
+      age: y.age, club: 'aus der Jugend', note: y.note, src: 'youth'
+    });
+    save('squad'); renderYouth(); renderTeam();
+    alert(y.name + ' ist jetzt im Seniorenkader.\n\nÄnderst du hier seine Werte oder trägst eine Saison ein, wird der Eintrag im Team-Tab automatisch mitgezogen.');
+  }
+
+  // Werte aus der Jugend in den verknüpften Kadereintrag übernehmen
+  function syncPromoted(y) {
+    const p = promotedOf(y.id);
+    if (!p) return;
+    p.name = y.name; p.pos = y.pos; p.age = y.age; p.ovr = y.ovr; p.pot = y.potMax; p.note = y.note;
+    save('squad');
   }
 
   function youthFromDb(i) {
@@ -957,17 +1019,18 @@
       case 'slot':        openSlot(slot); break;
       case 'slot-set':    setSlot(slot, id); break;
       case 'slot-clear':  delete state.squad.lineup[slot]; save('squad'); closeModal(); renderTeam(); break;
-      case 'load-club':   loadClub(); break;
-      case 'auto-lineup': autoLineup(); break;
-      case 'squad-add':   squadEdit(null); break;
-      case 'squad-edit':  squadEdit(id); break;
-      case 'squad-del':   squadDel(id); break;
+      case 'load-club':     loadClub(); break;
+      case 'auto-lineup':   autoLineup(); break;
+      case 'squad-search':  openSquadSearch(); break;
+      case 'squad-add-db':  squadAddFromSearch(i); break;
+      case 'squad-edit':    squadEdit(id); break;
+      case 'squad-del':     squadDel(id); break;
 
       case 'youth-add':      youthEdit(null); break;
       case 'youth-edit':     youthEdit(id); break;
       case 'youth-season':   youthSeason(id); break;
       case 'youth-compare':  youthCompare(id); break;
-      case 'youth-to-squad': youthToSquad(id); break;
+      case 'youth-promote':  youthPromote(id); break;
       case 'youth-del':      { const y = findYouth(id);
                                if (y && confirm(y.name + ' löschen?')) { state.youth = state.youth.filter(x => x.id !== id); save('youth'); renderYouth(); }
                                break; }
@@ -982,6 +1045,10 @@
   });
 
   $('#playerSearch').addEventListener('input', debounce(runSearch, 160));
+  // Suchfeld im Kader-Dialog entsteht erst beim Öffnen -> delegiert lauschen
+  document.addEventListener('input', debounce(e => {
+    if (e.target && e.target.id === 'squadSearch') runSquadSearch();
+  }, 160));
   $('#importFile').addEventListener('change', e => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ''; });
   $('#formationSel').addEventListener('change', e => {
     state.squad.formation = e.target.value; save('squad'); renderTeam();
