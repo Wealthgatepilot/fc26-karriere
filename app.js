@@ -149,8 +149,13 @@
   // der Text aus dem Kadermenü, der in seinen Zahlenbereich übersetzt wird.
   // alt = bisheriger Eintrag; bleibt erhalten, wenn nichts angegeben wurde.
   function potBereich(v, ovr, alt) {
-    const zahl = parseInt(v.pot, 10);
-    if (!isNaN(zahl) && zahl > 0) { const n = Math.max(zahl, ovr); return [n, n]; }
+    const von = parseInt(v.potVon, 10), bis = parseInt(v.potBis, 10);
+    const hatVon = !isNaN(von) && von > 0, hatBis = !isNaN(bis) && bis > 0;
+    if (hatVon || hatBis) {
+      let a = hatVon ? von : bis, b = hatBis ? bis : von;
+      if (a > b) { const t = a; a = b; b = t; }        // vertauschte Eingabe abfangen
+      return [Math.max(a, ovr), Math.max(b, ovr)];
+    }
     if (v.tier) {
       const t = POTENTIAL_TIERS.find(x => x.key === v.tier);
       if (t) return [Math.max(t.min, ovr), Math.max(t.max, ovr)];
@@ -415,7 +420,9 @@
             (p.loan ? ' <span class="promo-badge">📤 verliehen</span>' : '') + '</div>' +
           '<div class="p-meta">' + (p.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
             ' ' + (p.age || '?') + ' J.' + (p.club ? ' · ' + esc(p.club) : '') +
-            (p.src === 'youth' ? ' · 🌱 Jugend' : p.src === 'manual' ? ' · ✏️ selbst angelegt' : '') + '</div>' +
+            (p.src === 'youth' ? ' · 🌱 Jugend' : p.src === 'manual' ? ' · ✏️ selbst angelegt' : '') +
+            (p.seasons && p.seasons.length
+              ? ' · 📈 ' + p.seasons.length + (p.seasons.length === 1 ? ' Saison' : ' Saisons') + ' erfasst' : '') + '</div>' +
         '</div>' +
         '<div class="p-rat-wrap"><div class="p-rat"><span class="p-ovr ' + ratClass(p.ovr) + '">' + p.ovr + '</span>' +
           '<span class="p-arrow">→</span><span class="p-pot">' + potLabel(p) + '</span></div>' +
@@ -589,11 +596,6 @@
 
       p.loans = (p.loans || []).concat([{ ovr: dOvr, pot: dPot }]);
       delete p.loan;
-
-      // Kam der Spieler aus der Jugend, dort die neuen Werte mitführen
-      const y = p.youthId ? findYouth(p.youthId) : null;
-      if (y) { y.ovr = p.ovr; y.potMin = p.potMin; y.potMax = p.potMax; save('youth'); renderYouth(); }
-
       save('squad'); renderTeam();
     });
   }
@@ -769,9 +771,10 @@
       { k: 'pos',  label: 'Positionen (Komma-getrennt, z. B. ST, LW)', value: p ? (p.pos || []).join(', ') : '' },
       { k: 'age',  label: 'Alter', type: 'number', value: p ? p.age : '' },
       { k: 'ovr',  label: 'Overall', type: 'number', value: p ? p.ovr : '' },
-      { k: 'pot',  label: 'Potenzial als Zahl (z. B. aus dem Scout-Bericht)', type: 'number',
-        value: p && p.potMin === p.potMax ? p.potMax : '',
-        hint: 'Leer lassen, wenn du unten den Text aus dem Kadermenü wählst.' },
+      { k: 'potVon', label: 'Potenzial von', type: 'number', value: p ? p.potMin : '',
+        hint: 'Genaue Zahl bekannt? Nur hier eintragen und „bis“ leer lassen.' },
+      { k: 'potBis', label: 'Potenzial bis (bei einer Spanne)', type: 'number',
+        value: p && p.potMin !== p.potMax ? p.potMax : '' },
       { k: 'tier', label: 'oder: Text aus dem Kadermenü', type: 'select', value: '',
         options: [{ v: '', t: '– kein Text gewählt –' }].concat(
           POTENTIAL_TIERS.map(t => ({ v: t.key, t: t.en + '  (' + rangeLabel(t) + ')' }))) },
@@ -806,7 +809,6 @@
     state.squad.players = state.squad.players.filter(x => x.id !== id);
     Object.keys(state.squad.lineup).forEach(k => { if (state.squad.lineup[k] === id) delete state.squad.lineup[k]; });
     save('squad'); renderTeam();
-    if (p.youthId) renderYouth();   // Hochzieh-Knopf im Jugend-Tab wieder anbieten
   }
 
   // ===================== Tab: Jugend =====================
@@ -825,6 +827,7 @@
     }
     ul.innerHTML = state.youth.map(y => {
       const t = tierFor(y.potMax);
+      const tUnten = tierFor(y.potMin);   // bei einer Spanne kann die Untergrenze eine andere Stufe sein
       const spanne = 99 - 40;
       const startPct = Math.max(0, (y.ovr - 40) / spanne * 100);
       const potPct   = Math.max(0, (y.potMax - 40) / spanne * 100);
@@ -843,14 +846,12 @@
         }).join('') + '</ul>';
       }
 
-      const hoch = !!promotedOf(y.id);
       const jung = zuJung(y);
 
       return '<li class="y-card">' +
         '<div class="y-head">' +
           '<div class="p-main"><div class="p-name">' + esc(y.name) +
-            (hoch ? ' <span class="promo-badge">⬆️ Senioren</span>' : '') +
-            (!hoch && jung ? ' <span class="wait-badge">⏳ ab ' + HOCHZIEH_ALTER + '</span>' : '') + '</div>' +
+            (jung ? ' <span class="wait-badge">⏳ ab ' + HOCHZIEH_ALTER + '</span>' : '') + '</div>' +
             '<div class="p-meta">' + (y.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
             ' ' + (y.age || '?') + ' J.</div></div>' +
           '<div class="p-rat"><span class="p-ovr ' + ratClass(y.ovr) + '">' + y.ovr + '</span>' +
@@ -863,7 +864,11 @@
             ? 'noch mindestens ' + Math.max(0, y.potMin - y.ovr) + ' möglich'
             : 'noch ' + Math.max(0, y.potMax - y.ovr) + ' möglich') + '</span></div>' +
         '<div class="tier-row ' + t.farbe + '" style="margin-top:10px">' +
-          '<div class="tier-en">' + esc(t.en) + '</div><div class="tier-de">' + esc(t.de) + '</div>' +
+          (tUnten.key === t.key
+            ? '<div class="tier-en">' + esc(t.en) + '</div><div class="tier-de">' + esc(t.de) + '</div>'
+            : '<div class="tier-en">' + esc(tUnten.key === 'none' ? 'noch kein Potenzial-Satz' : tUnten.en) +
+                ' … ' + esc(t.en) + '</div>' +
+              '<div class="tier-de">je nachdem, wo sein echter Wert in der Spanne liegt</div>') +
           (y.ovr < 60 ? '<span class="tier-unsure">Unter 60 Overall zeigt das Spiel noch keinen Potenzial-Text an.</span>' : '') +
         '</div>' +
         (y.note ? '<p class="hint" style="margin:8px 0 0">' + esc(y.note) + '</p>' : '') +
@@ -871,8 +876,8 @@
         '<div class="y-actions" style="margin-top:10px">' +
           '<button class="mini-btn" data-action="youth-season" data-id="' + y.id + '" title="Saison eintragen">➕</button>' +
           '<button class="mini-btn" data-action="youth-compare" data-id="' + y.id + '" title="Mit Datenbank vergleichen">⚖️</button>' +
-          (hoch ? '' : '<button class="mini-btn' + (jung ? ' dim' : '') + '" data-action="youth-promote" data-id="' + y.id + '"' +
-                       ' title="' + (jung ? 'Erst ab ' + HOCHZIEH_ALTER + ' Jahren möglich' : 'In die Senioren hochziehen') + '">⬆️</button>') +
+          '<button class="mini-btn' + (jung ? ' dim' : '') + '" data-action="youth-promote" data-id="' + y.id + '"' +
+            ' title="' + (jung ? 'Erst ab ' + HOCHZIEH_ALTER + ' Jahren möglich' : 'In die Senioren hochziehen') + '">⬆️</button>' +
           '<button class="mini-btn" data-action="youth-edit" data-id="' + y.id + '" title="Bearbeiten">✏️</button>' +
           '<button class="mini-btn" data-action="youth-del" data-id="' + y.id + '" title="Löschen">🗑️</button>' +
         '</div></li>';
@@ -890,10 +895,13 @@
       { k: 'age',  label: 'Alter', type: 'number', value: src.age || '',
         hint: 'Ab ' + HOCHZIEH_ALTER + ' Jahren kannst du ihn in die Senioren hochziehen.' },
       { k: 'ovr',  label: 'Overall', type: 'number', value: src.ovr || '' },
-      { k: 'pot',  label: 'Potenzial (genaue Zahl, falls bekannt)', type: 'number', value: (src.potMin && src.potMin === src.potMax) ? src.potMin : '' },
-      { k: 'tier', label: 'oder: Text aus dem Scout-Bericht', type: 'select',
-        options: [{ v: '', t: '– kein Text gewählt –' }].concat(POTENTIAL_TIERS.map(t => ({ v: t.key, t: t.en + '  (' + t.min + '–' + t.max + ')' }))),
-        value: '', hint: 'Nur nötig, wenn du die genaue Zahl noch nicht siehst.' },
+      { k: 'potVon', label: 'Potenzial von', type: 'number', value: src.potMin || '',
+        hint: 'Der Scout-Bericht nennt meist eine Spanne (z. B. 78–91) – die kommt hier und ins Feld darunter.' },
+      { k: 'potBis', label: 'Potenzial bis (bei einer Spanne)', type: 'number',
+        value: (src.potMin && src.potMin !== src.potMax) ? src.potMax : '' },
+      { k: 'tier', label: 'oder: Text aus dem Kadermenü', type: 'select',
+        options: [{ v: '', t: '– kein Text gewählt –' }].concat(POTENTIAL_TIERS.map(t => ({ v: t.key, t: t.en + '  (' + rangeLabel(t) + ')' }))),
+        value: '', hint: 'Nur nötig, wenn du weder Zahl noch Spanne siehst.' },
       { k: 'note', label: 'Notiz', type: 'textarea', value: src.note || '' }
     ], v => {
       if (!v.name) return;
@@ -901,7 +909,7 @@
       const bereich = potBereich(v, ovr, y);
       const data = { name: v.name, pos: parsePositions(v.pos), age: parseInt(v.age, 10) || 0, ovr: ovr,
                      potMin: bereich[0], potMax: bereich[1], note: v.note };
-      if (y) { Object.assign(y, data); syncPromoted(y); }
+      if (y) Object.assign(y, data);
       else state.youth.push(Object.assign({ id: uid(), seasons: [] }, data));
       save('youth'); renderYouth();
     });
@@ -926,7 +934,6 @@
       if (last.age) y.age = last.age;
       if (y.potMax < y.ovr) y.potMax = y.ovr;
       if (y.potMin < y.ovr) y.potMin = y.ovr;
-      syncPromoted(y);
       save('youth'); renderYouth();
     });
   }
@@ -967,7 +974,8 @@
   }
 
   // ---- Jugendspieler in die Senioren hochziehen ----
-  const promotedOf = id => state.squad.players.find(p => p.youthId === id);
+  // Das ist ein Umzug, kein Kopieren: im Spiel verlässt der Spieler die Akademie.
+  // Der Saison-Verlauf reist mit, damit die Entwicklung nicht verloren geht.
 
   // FC 26 lässt einen Jugendspieler frühestens mit 16 in die Senioren.
   // Ohne eingetragenes Alter lässt sich das nicht beurteilen -> nicht blockieren.
@@ -977,7 +985,6 @@
   function youthPromote(id) {
     const y = findYouth(id);
     if (!y) return;
-    if (promotedOf(id)) { alert(y.name + ' steht schon im Seniorenkader.'); return; }
     if (zuJung(y)) {
       alert(y.name + ' ist erst ' + y.age + ' Jahre alt.\n\nIn FC 26 kannst du einen Jugendspieler frühestens mit ' +
             HOCHZIEH_ALTER + ' in die Senioren hochziehen – also in ' + (HOCHZIEH_ALTER - y.age) +
@@ -986,20 +993,14 @@
       return;
     }
     state.squad.players.push({
-      id: uid(), youthId: y.id, name: y.name, pos: y.pos, ovr: y.ovr,
-      potMin: y.potMin, potMax: y.potMax, age: y.age, club: 'aus der Jugend', note: y.note, src: 'youth'
+      id: uid(), name: y.name, pos: y.pos, ovr: y.ovr,
+      potMin: y.potMin, potMax: y.potMax, age: y.age, club: 'aus der Jugend',
+      note: y.note, seasons: y.seasons || [], src: 'youth'
     });
-    save('squad'); renderYouth(); renderTeam();
-    alert(y.name + ' ist jetzt im Seniorenkader.\n\nÄnderst du hier seine Werte oder trägst eine Saison ein, wird der Eintrag im Team-Tab automatisch mitgezogen.');
-  }
-
-  // Werte aus der Jugend in den verknüpften Kadereintrag übernehmen
-  function syncPromoted(y) {
-    const p = promotedOf(y.id);
-    if (!p) return;
-    p.name = y.name; p.pos = y.pos; p.age = y.age; p.ovr = y.ovr;
-    p.potMin = y.potMin; p.potMax = y.potMax; p.note = y.note;
-    save('squad');
+    state.youth = state.youth.filter(x => x.id !== y.id);   // verlässt die Akademie
+    save('squad'); save('youth'); renderYouth(); renderTeam();
+    alert(y.name + ' ist jetzt im Seniorenkader und aus der Jugendliste verschwunden.\n\n' +
+          'Potenzial (' + potLabel(y) + ') und Saison-Verlauf sind mitgewandert.');
   }
 
   function youthFromDb(i) {
