@@ -686,11 +686,13 @@
       }
 
       const hoch = !!promotedOf(y.id);
+      const jung = zuJung(y);
 
       return '<li class="y-card">' +
         '<div class="y-head">' +
           '<div class="p-main"><div class="p-name">' + esc(y.name) +
-            (hoch ? ' <span class="promo-badge">⬆️ Senioren</span>' : '') + '</div>' +
+            (hoch ? ' <span class="promo-badge">⬆️ Senioren</span>' : '') +
+            (!hoch && jung ? ' <span class="wait-badge">⏳ ab ' + HOCHZIEH_ALTER + '</span>' : '') + '</div>' +
             '<div class="p-meta">' + (y.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
             ' ' + (y.age || '?') + ' J.</div></div>' +
           '<div class="p-rat"><span class="p-ovr ' + ratClass(y.ovr) + '">' + y.ovr + '</span>' +
@@ -709,7 +711,8 @@
         '<div class="y-actions" style="margin-top:10px">' +
           '<button class="mini-btn" data-action="youth-season" data-id="' + y.id + '" title="Saison eintragen">➕</button>' +
           '<button class="mini-btn" data-action="youth-compare" data-id="' + y.id + '" title="Mit Datenbank vergleichen">⚖️</button>' +
-          (hoch ? '' : '<button class="mini-btn" data-action="youth-promote" data-id="' + y.id + '" title="In die Senioren hochziehen">⬆️</button>') +
+          (hoch ? '' : '<button class="mini-btn' + (jung ? ' dim' : '') + '" data-action="youth-promote" data-id="' + y.id + '"' +
+                       ' title="' + (jung ? 'Erst ab ' + HOCHZIEH_ALTER + ' Jahren möglich' : 'In die Senioren hochziehen') + '">⬆️</button>') +
           '<button class="mini-btn" data-action="youth-edit" data-id="' + y.id + '" title="Bearbeiten">✏️</button>' +
           '<button class="mini-btn" data-action="youth-del" data-id="' + y.id + '" title="Löschen">🗑️</button>' +
         '</div></li>';
@@ -724,7 +727,8 @@
     openPrompt(y ? 'Jugendspieler bearbeiten' : 'Jugendspieler anlegen', [
       { k: 'name', label: 'Name', value: src.name || '' },
       { k: 'pos',  label: 'Positionen (Komma-getrennt, z. B. CAM, CM)', value: (src.pos || []).join(', ') },
-      { k: 'age',  label: 'Alter', type: 'number', value: src.age || '' },
+      { k: 'age',  label: 'Alter', type: 'number', value: src.age || '',
+        hint: 'Ab ' + HOCHZIEH_ALTER + ' Jahren kannst du ihn in die Senioren hochziehen.' },
       { k: 'ovr',  label: 'Overall', type: 'number', value: src.ovr || '' },
       { k: 'pot',  label: 'Potenzial (genaue Zahl, falls bekannt)', type: 'number', value: (src.potMin && src.potMin === src.potMax) ? src.potMin : '' },
       { k: 'tier', label: 'oder: Text aus dem Scout-Bericht', type: 'select',
@@ -812,10 +816,22 @@
   // ---- Jugendspieler in die Senioren hochziehen ----
   const promotedOf = id => state.squad.players.find(p => p.youthId === id);
 
+  // FC 26 lässt einen Jugendspieler frühestens mit 16 in die Senioren.
+  // Ohne eingetragenes Alter lässt sich das nicht beurteilen -> nicht blockieren.
+  const HOCHZIEH_ALTER = 16;
+  const zuJung = y => y.age > 0 && y.age < HOCHZIEH_ALTER;
+
   function youthPromote(id) {
     const y = findYouth(id);
     if (!y) return;
     if (promotedOf(id)) { alert(y.name + ' steht schon im Seniorenkader.'); return; }
+    if (zuJung(y)) {
+      alert(y.name + ' ist erst ' + y.age + ' Jahre alt.\n\nIn FC 26 kannst du einen Jugendspieler frühestens mit ' +
+            HOCHZIEH_ALTER + ' in die Senioren hochziehen – also in ' + (HOCHZIEH_ALTER - y.age) +
+            (HOCHZIEH_ALTER - y.age === 1 ? ' Jahr.' : ' Jahren.') +
+            '\n\nTrage über ➕ eine Saison mit dem neuen Alter ein, sobald es so weit ist.');
+      return;
+    }
     state.squad.players.push({
       id: uid(), youthId: y.id, name: y.name, pos: y.pos, ovr: y.ovr, pot: y.potMax,
       age: y.age, club: 'aus der Jugend', note: y.note, src: 'youth'
