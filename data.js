@@ -135,6 +135,31 @@ const POS_GRUPPEN = {
   Angriff:    ['LW', 'RW', 'ST']
 };
 
+/* ---------- Leih-Glitch ----------
+   Seit Jahren bekannter Karrieremodus-Bug: Wird ein Spieler verliehen und sofort
+   zurückgerufen, würfelt das Spiel sein Potenzial neu aus – meist nach oben.
+
+   Quellen: earlygame.com (Loan-Glitch erklärt, FC 26) und soccergaming.com.
+   Die Quellen widersprechen sich beim idealen Kandidaten – beide Angaben stehen
+   deshalb unten in der App, statt dass eine davon als Wahrheit verkauft wird. */
+const LOAN_STEPS = [
+  'Sicherstellen, dass <b>mindestens 25 Spieler</b> im Kader stehen – sonst kommen gar keine Leihangebote.',
+  'Spieler auf die <b>Leihliste</b> setzen (Transferliste → verleihen).',
+  'Ein beliebiges <b>Leihangebot annehmen</b>. Liga, Land und Laufzeit sind egal.',
+  'Sobald die Leihe steht: <b>manuell speichern</b>.',
+  'Den Spieler <b>sofort aus der Leihe zurückrufen</b> (abbrechen).',
+  'Ergebnis prüfen: Steigt der <b>Marktwert</b>, hat der Glitch gegriffen. Fällt er, wurde das Potenzial gesenkt.',
+  'Bei schlechtem Ergebnis den <b>Spielstand neu laden</b> und den Rückruf wiederholen.',
+  'Nach jeder erfolgreichen Runde speichern und <b>beliebig oft wiederholen</b> – solange das Transferfenster offen ist.'
+];
+
+const LOAN_NOTES = [
+  'Pro Leihe verschiebt sich das Potenzial um etwa <b>±3 bis +4 Punkte</b>. Es kann also auch <b>sinken</b> – deshalb der Speicherstand vor dem Rückruf.',
+  'Die Quellen sind sich beim idealen Kandidaten uneinig: earlygame nennt <b>schwache Jugendspieler mit 53–63 Potenzial</b> (dort ist am meisten Luft), soccergaming <b>unter 22 Jahre, ab 60 Overall und 70+ Potenzial</b>. Die Liste unten sortiert nach Luft nach oben und Jugend – such dir aus, welcher Lesart du folgst.',
+  'Bei geschlossenem Transferfenster funktioniert es nicht sinnvoll, weil du niemanden verleihen kannst.',
+  'Das ist ein <b>Bug, kein Feature</b> – EA kann ihn mit jedem Update abstellen.'
+];
+
 const DEFAULT_DATA = {
   squad:    { formation: '4-3-3', club: '', players: [], lineup: {} },
   youth:    [],

@@ -201,6 +201,9 @@ input, select { font-family: inherit; font-size: 16px; }
 .note-list li {
   background: var(--bg-card-2); border-radius: 10px; padding: 10px 12px; font-size: .85rem;
 }
+.step-list { padding-left: 22px; display: flex; flex-direction: column; gap: 8px; }
+.step-list li { font-size: .88rem; padding-left: 4px; }
+.step-list li::marker { color: var(--accent-2); font-weight: 800; }
 
 /* ============ Aufstellung ============ */
 .pitch {

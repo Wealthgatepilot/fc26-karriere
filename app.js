@@ -365,6 +365,7 @@
     $('#teamPitchView').hidden = v !== 'pitch';
     $('#teamSquadView').hidden = v !== 'squad';
     $('#teamStatsView').hidden = v !== 'stats';
+    $('#teamLoanView').hidden  = v !== 'loan';
     renderTeam();
   }
 
@@ -410,7 +411,8 @@
       const wachs = p.potMin === p.potMax ? p.potMax - p.ovr : 0;
       return '<li class="p-card">' +
         '<div class="p-main">' +
-          '<div class="p-name">' + esc(p.name) + '</div>' +
+          '<div class="p-name">' + esc(p.name) +
+            (p.loan ? ' <span class="promo-badge">📤 verliehen</span>' : '') + '</div>' +
           '<div class="p-meta">' + (p.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
             ' ' + (p.age || '?') + ' J.' + (p.club ? ' · ' + esc(p.club) : '') +
             (p.src === 'youth' ? ' · 🌱 Jugend' : p.src === 'manual' ? ' · ✏️ selbst angelegt' : '') + '</div>' +
@@ -419,6 +421,8 @@
           '<span class="p-arrow">→</span><span class="p-pot">' + potLabel(p) + '</span></div>' +
           (wachs > 0 ? '<span class="p-growth">+' + wachs + '</span>' : '') + '</div>' +
         '<div class="y-actions">' +
+          '<button class="mini-btn" data-action="loan-toggle" data-id="' + p.id + '" title="' +
+            (p.loan ? 'Rückkehr aus der Leihe eintragen' : 'Verleihen') + '">' + (p.loan ? '📥' : '📤') + '</button>' +
           '<button class="mini-btn" data-action="squad-edit" data-id="' + p.id + '" title="Bearbeiten">✏️</button>' +
           '<button class="mini-btn" data-action="squad-del" data-id="' + p.id + '" title="Entfernen">🗑️</button>' +
         '</div></li>';
@@ -493,7 +497,105 @@
       : 'Noch kein Kader – „Verein laden“ holt eine komplette Mannschaft aus der Datenbank.';
     if (teamView === 'pitch') renderPitch();
     else if (teamView === 'squad') renderSquadList();
+    else if (teamView === 'loan') renderLoan();
     else renderSquadStats();
+  }
+
+  // ===================== Leihe / Leih-Glitch =====================
+  // Wie gut eignet sich der Spieler? Viel Luft nach oben zählt am meisten,
+  // Jugend zusätzlich – beides sind die Kriterien, die die Quellen nennen.
+  // Luft nach oben: bei nach oben offenen Bereichen ("90+") zählt die Untergrenze,
+  // sonst würde die Liste mit der theoretischen 99 rechnen und Kandidaten hochjubeln.
+  const offen = p => p.potMax >= 99 && p.potMin !== p.potMax;
+  const luftNachOben = p => (offen(p) ? p.potMin : p.potMax) - p.ovr;
+  const loanScore = p => luftNachOben(p) + Math.max(0, 24 - (p.age || 24)) * 2;
+
+  function loanCard(p) {
+    const luft = luftNachOben(p);
+    const log = p.loans || [];
+    const summe = log.reduce((s, x) => s + (x.ovr || 0), 0);
+    return '<li class="p-card' + (p.loan ? ' career-active' : '') + '">' +
+      '<div class="p-main">' +
+        '<div class="p-name">' + esc(p.name) + (p.loan ? ' <span class="promo-badge">📤 verliehen</span>' : '') + '</div>' +
+        '<div class="p-meta">' + (p.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
+          ' ' + (p.age || '?') + ' J. · ' + (offen(p) ? 'mind. ' : '') + luft + ' Punkte Luft' +
+          (log.length ? ' · ' + log.length + (log.length === 1 ? ' Leihe' : ' Leihen') +
+                        (summe ? ' (+' + summe + ' GES)' : '') : '') + '</div>' +
+      '</div>' +
+      '<div class="p-rat-wrap"><div class="p-rat">' +
+        '<span class="p-ovr ' + ratClass(p.ovr) + '">' + p.ovr + '</span>' +
+        '<span class="p-arrow">→</span><span class="p-pot">' + potLabel(p) + '</span></div></div>' +
+      '<div class="y-actions"><button class="mini-btn" data-action="loan-toggle" data-id="' + p.id + '" title="' +
+        (p.loan ? 'Rückkehr eintragen' : 'Als verliehen markieren') + '">' + (p.loan ? '📥' : '📤') + '</button></div>' +
+      '</li>';
+  }
+
+  function renderLoan() {
+    const all = state.squad.players;
+    const box = $('#loanContent');
+    let html = '';
+
+    if (all.length < 25) {
+      html += '<div class="warn-box">⚠️ Nur ' + all.length + ' Spieler im Kader. Für Leihangebote brauchst du <b>mindestens 25</b> – ' +
+              'sonst bietet niemand. „Verein laden“ füllt den Kader in einem Rutsch.</div>';
+    }
+
+    const verliehen = all.filter(p => p.loan);
+    if (verliehen.length) {
+      html += '<div class="section-divider">Gerade verliehen</div><ul class="card-list">' +
+              verliehen.map(loanCard).join('') + '</ul>';
+    }
+
+    const kandidaten = all.filter(p => !p.loan && luftNachOben(p) > 0)
+                          .sort((a, b) => loanScore(b) - loanScore(a));
+    html += '<div class="section-divider">Beste Kandidaten</div>';
+    html += kandidaten.length
+      ? '<p class="hint">Sortiert nach Luft nach oben (Potenzial − Overall) und Alter. 📤 markiert den Spieler als verliehen, 📥 trägt die Rückkehr ein.</p>' +
+        '<ul class="card-list">' + kandidaten.slice(0, 12).map(loanCard).join('') + '</ul>' +
+        (kandidaten.length > 12 ? '<p class="hint">… und ' + (kandidaten.length - 12) + ' weitere im Kader.</p>' : '')
+      : '<p class="hint">Kein Spieler im Kader hat noch Luft nach oben – oder der Kader ist leer.</p>';
+
+    html += '<div class="section-divider">So läuft der Leih-Glitch</div><ol class="step-list">' +
+            LOAN_STEPS.map(s => '<li>' + s + '</li>').join('') + '</ol>';
+    html += '<div class="section-divider">Wichtig dazu</div><ul class="note-list">' +
+            LOAN_NOTES.map(s => '<li>' + s + '</li>').join('') + '</ul>';
+    box.innerHTML = html;
+  }
+
+  function loanToggle(id) {
+    const p = findSquad(id);
+    if (!p) return;
+
+    if (!p.loan) {                       // rausgehen: Ausgangswerte merken
+      p.loan = { ovr: p.ovr, potMax: p.potMax };
+      save('squad'); renderTeam();
+      return;
+    }
+
+    openPrompt('Rückkehr aus der Leihe – ' + p.name, [
+      { k: 'ovrPlus', label: 'Overall gestiegen um', type: 'number', value: '',
+        hint: 'Was nach Rückkehr bzw. Abbruch dazugekommen ist. 0 = nichts passiert.' },
+      { k: 'potPlus', label: 'Potenzial gestiegen um (optional)', type: 'number', value: '',
+        hint: 'Darf negativ sein – eine Leihe kann das Potenzial auch senken.' }
+    ], v => {
+      const grenze = n => Math.max(1, Math.min(99, n));
+      const dOvr = parseInt(v.ovrPlus, 10) || 0;
+      const dPot = parseInt(v.potPlus, 10) || 0;
+
+      p.ovr = grenze(p.ovr + dOvr);
+      if (dPot) { p.potMin = grenze(p.potMin + dPot); p.potMax = grenze(p.potMax + dPot); }
+      if (p.potMax < p.ovr) p.potMax = p.ovr;      // Potenzial kann nie unter dem Istwert liegen
+      if (p.potMin < p.ovr) p.potMin = p.ovr;
+
+      p.loans = (p.loans || []).concat([{ ovr: dOvr, pot: dPot }]);
+      delete p.loan;
+
+      // Kam der Spieler aus der Jugend, dort die neuen Werte mitführen
+      const y = p.youthId ? findYouth(p.youthId) : null;
+      if (y) { y.ovr = p.ovr; y.potMin = p.potMin; y.potMax = p.potMax; save('youth'); renderYouth(); }
+
+      save('squad'); renderTeam();
+    });
   }
 
   function openSlot(idx) {
@@ -1227,6 +1329,7 @@
       case 'auto-lineup':   autoLineup(); break;
       case 'squad-search':  openSquadSearch(); break;
       case 'squad-new':     squadEdit(null); break;
+      case 'loan-toggle':   loanToggle(id); break;
       case 'squad-add-db':  squadAddFromSearch(i); break;
       case 'squad-edit':    squadEdit(id); break;
       case 'squad-del':     squadDel(id); break;
