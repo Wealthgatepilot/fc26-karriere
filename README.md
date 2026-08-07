@@ -9,7 +9,9 @@ Reines HTML/CSS/JS, **kein Build-Schritt**, läuft über GitHub Pages und ist of
 - **Team:** **Verein laden** holt einen kompletten Kader mit dem Datenbank-Stand zum Spielstart (ersetzen oder ergänzen). **Elf aufstellen** besetzt die Startelf automatisch: alle Platz-Spieler-Paare werden bewertet (Overall + Bonus für die erstgenannte Position − Abzug fürs Aushelfen) und global nach Punktzahl vergeben, statt Platz für Platz – sonst schnappt der frühe Außenverteidiger-Platz einen Mittelfeldspieler weg. Dazu acht Formationen, farbige Positions-Eignung und eine Auswertung (Ø Overall, Altersschnitt, Wachstumsreserve, Stärke je Mannschaftsteil, Warnung bei Unterbesetzung).
 - **Jugend:** eigene Akademie-Spieler mit Werten und Potenzial pflegen (auch als Bereich, wenn nur der Scout-Text bekannt ist), Entwicklung über Saisons verfolgen und mit der Datenbank vergleichen. **Eigene Spieler entstehen ausschließlich hier** und werden mit „⬆️ Hochziehen“ in den Seniorenkader übernommen – wie im Spiel erst **ab 16 Jahren**, jüngere sind mit „⏳ ab 16“ markiert. Spätere Änderungen und Saison-Einträge wandern automatisch in den Team-Tab mit.
 - **Potenzial:** was die Texte im Kadermenü zahlenmäßig bedeuten, plus Rechner in beide Richtungen.
-- **Backup:** Export/Import als JSON. Daten liegen lokal im `localStorage`.
+- **Karriere-Stände:** Oben im Kopf lässt sich zwischen mehreren Karrieren umschalten – jede mit eigenem Kader, eigener Aufstellung und eigenen Talenten. Anlegen, umbenennen, kopieren, löschen. Gespeichert wird automatisch, kein JSON-Hin-und-Her nötig.
+- **Potenzial als Zahl oder Text:** Überall, wo du ein Potenzial einträgst, kannst du entweder die genaue Zahl (Scout-Bericht) oder den Text aus dem Kadermenü angeben – der Text wird in seinen Zahlenbereich übersetzt und als solcher angezeigt (z. B. `85–89`).
+- **Backup:** Export/Import als JSON. Der Export enthält die aktive Karriere; beim Import wählst du, ob sie als **neue** Karriere angelegt oder die aktuelle überschrieben wird. Daten liegen lokal im `localStorage`.
 
 ## Dateien
 | Datei | Zweck |

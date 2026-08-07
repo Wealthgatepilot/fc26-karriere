@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fc26-v2';
+const CACHE_NAME = 'fc26-v3';
 const ASSETS = [
   './index.html',
   './style.css',

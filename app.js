@@ -5,32 +5,59 @@
   'use strict';
 
   // ===================== Storage =====================
-  const KEYS = {
-    squad:    'fc_squad',
-    youth:    'fc_youth',
-    settings: 'fc_settings',
-  };
+  // Jede Karriere hat ihren eigenen Satz Schlüssel: <karriereId>_squad usw.
+  // So liegen mehrere Spielstände nebeneinander, ohne dass man JSON hin- und herschiebt.
+  const PARTS = ['squad', 'youth', 'settings'];
+  const CAREER_LIST = 'fc_careers';
+  const CAREER_ACTIVE = 'fc_active';
 
   const state = {};
+  let careers = [], activeCareer = null;
   const clone = o => JSON.parse(JSON.stringify(o));
   const uid = () => 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const storeKey = (k, id) => (id || activeCareer) + '_' + k;
+
+  function loadCareers() {
+    try { careers = JSON.parse(localStorage.getItem(CAREER_LIST)) || []; } catch (e) { careers = []; }
+    if (!Array.isArray(careers) || !careers.length) {
+      const id = 'fc_c' + Date.now().toString(36);
+      careers = [{ id: id, name: 'Karriere 1' }];
+      // Einzelstand aus der Zeit vor den Karrieren übernehmen, statt ihn liegen zu lassen
+      PARTS.forEach(k => {
+        const alt = localStorage.getItem('fc_' + k);
+        if (alt != null) { localStorage.setItem(id + '_' + k, alt); localStorage.removeItem('fc_' + k); }
+      });
+      saveCareers();
+    }
+    activeCareer = localStorage.getItem(CAREER_ACTIVE);
+    if (!careers.some(c => c.id === activeCareer)) activeCareer = careers[0].id;
+    localStorage.setItem(CAREER_ACTIVE, activeCareer);
+  }
+  const saveCareers = () => localStorage.setItem(CAREER_LIST, JSON.stringify(careers));
 
   function load() {
-    for (const k in KEYS) {
-      const raw = localStorage.getItem(KEYS[k]);
+    for (const k of PARTS) {
+      const raw = localStorage.getItem(storeKey(k));
       if (raw) { try { state[k] = JSON.parse(raw); continue; } catch (e) { /* fällt durch */ } }
       state[k] = clone(DEFAULT_DATA[k]);
       save(k);
     }
     ensureStructure();
   }
-  const save = k => localStorage.setItem(KEYS[k], JSON.stringify(state[k]));
-  const saveAll = () => { for (const k in KEYS) save(k); };
+  const save = k => localStorage.setItem(storeKey(k), JSON.stringify(state[k]));
+  const saveAll = () => PARTS.forEach(save);
 
   function ensureStructure() {
     if (!state.squad || typeof state.squad !== 'object') state.squad = clone(DEFAULT_DATA.squad);
     if (!FORMATIONS[state.squad.formation]) state.squad.formation = '4-3-3';
     if (!Array.isArray(state.squad.players)) state.squad.players = [];
+    // Potenzial wird als Bereich gehalten (im Spiel sieht man oft nur den Text).
+    // Ältere Stände hatten nur eine Zahl "pot" - die wird hier übernommen.
+    state.squad.players.forEach(p => {
+      if (p.potMax == null) p.potMax = p.pot != null ? p.pot : (p.ovr || 0);
+      if (p.potMin == null) p.potMin = p.potMax;
+      delete p.pot;
+    });
     if (!state.squad.lineup || typeof state.squad.lineup !== 'object') state.squad.lineup = {};
     if (!Array.isArray(state.youth)) state.youth = [];
     state.youth.forEach(y => { if (!Array.isArray(y.seasons)) y.seasons = []; });
@@ -118,6 +145,20 @@
     if (t.max >= 99) return t.min + '+';
     return t.min + '–' + t.max;
   }
+  // Potenzial aus einem Dialog lesen: entweder die genaue Zahl (Scout-Bericht) oder
+  // der Text aus dem Kadermenü, der in seinen Zahlenbereich übersetzt wird.
+  // alt = bisheriger Eintrag; bleibt erhalten, wenn nichts angegeben wurde.
+  function potBereich(v, ovr, alt) {
+    const zahl = parseInt(v.pot, 10);
+    if (!isNaN(zahl) && zahl > 0) { const n = Math.max(zahl, ovr); return [n, n]; }
+    if (v.tier) {
+      const t = POTENTIAL_TIERS.find(x => x.key === v.tier);
+      if (t) return [Math.max(t.min, ovr), Math.max(t.max, ovr)];
+    }
+    if (alt && alt.potMax != null) return [Math.max(alt.potMin, ovr), Math.max(alt.potMax, ovr)];
+    return [ovr, ovr];
+  }
+
   // Liegt der Wert auf einer der unsicheren Grenzen?
   function tierGrenzfall(pot) {
     return POTENTIAL_TIERS.some(t => t.unsicher && (pot === t.min || pot === t.max));
@@ -365,7 +406,7 @@
       ? state.squad.players.length + ' Spieler im Kader'
       : 'Noch kein Spieler im Kader – über Suche, Datenbank oder Jugend hinzufügen.';
     $('#squadList').innerHTML = list.map(p => {
-      const wachs = p.pot - p.ovr;
+      const wachs = p.potMax - p.ovr;
       return '<li class="p-card">' +
         '<div class="p-main">' +
           '<div class="p-name">' + esc(p.name) + '</div>' +
@@ -374,7 +415,7 @@
             (p.src === 'youth' ? ' · 🌱 Jugend' : '') + '</div>' +
         '</div>' +
         '<div class="p-rat-wrap"><div class="p-rat"><span class="p-ovr ' + ratClass(p.ovr) + '">' + p.ovr + '</span>' +
-          '<span class="p-arrow">→</span><span class="p-pot">' + p.pot + '</span></div>' +
+          '<span class="p-arrow">→</span><span class="p-pot">' + potLabel(p) + '</span></div>' +
           (wachs > 0 ? '<span class="p-growth">+' + wachs + '</span>' : '') + '</div>' +
         '<div class="y-actions">' +
           '<button class="mini-btn" data-action="squad-edit" data-id="' + p.id + '" title="Bearbeiten">✏️</button>' +
@@ -403,7 +444,7 @@
     }
     const avg = (arr, f) => arr.length ? Math.round(arr.reduce((s, x) => s + f(x), 0) / arr.length) : 0;
     const avg1 = (arr, f) => arr.length ? (arr.reduce((s, x) => s + f(x), 0) / arr.length).toFixed(1).replace('.', ',') : '–';
-    const reserve = all.reduce((s, p) => s + Math.max(0, p.pot - p.ovr), 0);
+    const reserve = all.reduce((s, p) => s + Math.max(0, p.potMax - p.ovr), 0);
 
     let html = '<div class="stat-grid">' +
       '<div class="stat-box"><div class="s-val ' + ratClass(avg(eleven, p => p.ovr)) + '">' +
@@ -411,7 +452,7 @@
         '<div class="s-lbl">Ø Overall Startelf (' + eleven.length + '/11)</div></div>' +
       '<div class="stat-box"><div class="s-val">' + avg(all, p => p.ovr) + '</div><div class="s-lbl">Ø Overall Kader</div></div>' +
       '<div class="stat-box"><div class="s-val">' + avg1(all, p => p.age || 0) + '</div><div class="s-lbl">Ø Alter</div></div>' +
-      '<div class="stat-box"><div class="s-val">' + avg(all, p => p.pot) + '</div><div class="s-lbl">Ø Potenzial</div></div>' +
+      '<div class="stat-box"><div class="s-val">' + avg(all, p => p.potMax) + '</div><div class="s-lbl">Ø Potenzial (Obergrenze)</div></div>' +
       '<div class="stat-box"><div class="s-val" style="color:var(--accent-2)">+' + reserve + '</div>' +
         '<div class="s-lbl">Wachstumsreserve gesamt</div></div>' +
       '<div class="stat-box"><div class="s-val">' + all.filter(p => (p.age || 99) <= 21).length + '</div>' +
@@ -502,7 +543,7 @@
 
   const dbPlayerObj = i => ({
     name: FC_PLAYERS[i][F.SHORT], pos: pPos(i), ovr: FC_PLAYERS[i][F.OVR],
-    pot: FC_PLAYERS[i][F.POT], age: FC_PLAYERS[i][F.AGE], club: pClub(i), src: 'db'
+    potMin: FC_PLAYERS[i][F.POT], potMax: FC_PLAYERS[i][F.POT], age: FC_PLAYERS[i][F.AGE], club: pClub(i), src: 'db'
   });
 
   function squadFromDb(i) {
@@ -567,7 +608,7 @@
 
       const neu = idx.map(i => ({
         id: uid(), name: FC_PLAYERS[i][F.SHORT], pos: pPos(i), ovr: FC_PLAYERS[i][F.OVR],
-        pot: FC_PLAYERS[i][F.POT], age: FC_PLAYERS[i][F.AGE], club: FC_CLUBS[ci], src: 'db'
+        potMin: FC_PLAYERS[i][F.POT], potMax: FC_PLAYERS[i][F.POT], age: FC_PLAYERS[i][F.AGE], club: FC_CLUBS[ci], src: 'db'
       }));
 
       if (v.mode === 'replace') {
@@ -623,17 +664,24 @@
       { k: 'pos',  label: 'Positionen (Komma-getrennt, z. B. ST, LW)', value: (p.pos || []).join(', ') },
       { k: 'age',  label: 'Alter', type: 'number', value: p.age },
       { k: 'ovr',  label: 'Overall', type: 'number', value: p.ovr },
-      { k: 'pot',  label: 'Potenzial', type: 'number', value: p.pot },
+      { k: 'pot',  label: 'Potenzial als Zahl (z. B. aus dem Scout-Bericht)', type: 'number',
+        value: p.potMin === p.potMax ? p.potMax : '',
+        hint: 'Leer lassen, wenn du unten den Text aus dem Kadermenü wählst.' },
+      { k: 'tier', label: 'oder: Text aus dem Kadermenü', type: 'select', value: '',
+        options: [{ v: '', t: '– kein Text gewählt –' }].concat(
+          POTENTIAL_TIERS.map(t => ({ v: t.key, t: t.en + '  (' + rangeLabel(t) + ')' }))) },
       { k: 'club', label: 'Verein (optional)', value: p.club || '' }
     ], v => {
       if (!v.name) return;
       const ovr = parseInt(v.ovr, 10) || 0;
+      const bereich = potBereich(v, ovr, p);
       Object.assign(p, {
         name: v.name,
         pos: parsePositions(v.pos),
         age: parseInt(v.age, 10) || 0,
         ovr: ovr,
-        pot: Math.max(parseInt(v.pot, 10) || 0, ovr),
+        potMin: bereich[0],
+        potMax: bereich[1],
         club: v.club
       });
       save('squad'); renderTeam();
@@ -738,16 +786,9 @@
     ], v => {
       if (!v.name) return;
       const ovr = parseInt(v.ovr, 10) || 0;
-      let potMin, potMax;
-      const exact = parseInt(v.pot, 10);
-      if (!isNaN(exact) && exact > 0) { potMin = potMax = Math.max(exact, ovr); }
-      else if (v.tier) {
-        const t = POTENTIAL_TIERS.find(x => x.key === v.tier);
-        potMin = Math.max(t.min, ovr); potMax = t.max;
-      } else if (y) { potMin = y.potMin; potMax = y.potMax; }
-      else { potMin = potMax = ovr; }
-
-      const data = { name: v.name, pos: parsePositions(v.pos), age: parseInt(v.age, 10) || 0, ovr: ovr, potMin: potMin, potMax: potMax, note: v.note };
+      const bereich = potBereich(v, ovr, y);
+      const data = { name: v.name, pos: parsePositions(v.pos), age: parseInt(v.age, 10) || 0, ovr: ovr,
+                     potMin: bereich[0], potMax: bereich[1], note: v.note };
       if (y) { Object.assign(y, data); syncPromoted(y); }
       else state.youth.push(Object.assign({ id: uid(), seasons: [] }, data));
       save('youth'); renderYouth();
@@ -833,8 +874,8 @@
       return;
     }
     state.squad.players.push({
-      id: uid(), youthId: y.id, name: y.name, pos: y.pos, ovr: y.ovr, pot: y.potMax,
-      age: y.age, club: 'aus der Jugend', note: y.note, src: 'youth'
+      id: uid(), youthId: y.id, name: y.name, pos: y.pos, ovr: y.ovr,
+      potMin: y.potMin, potMax: y.potMax, age: y.age, club: 'aus der Jugend', note: y.note, src: 'youth'
     });
     save('squad'); renderYouth(); renderTeam();
     alert(y.name + ' ist jetzt im Seniorenkader.\n\nÄnderst du hier seine Werte oder trägst eine Saison ein, wird der Eintrag im Team-Tab automatisch mitgezogen.');
@@ -844,7 +885,8 @@
   function syncPromoted(y) {
     const p = promotedOf(y.id);
     if (!p) return;
-    p.name = y.name; p.pos = y.pos; p.age = y.age; p.ovr = y.ovr; p.pot = y.potMax; p.note = y.note;
+    p.name = y.name; p.pos = y.pos; p.age = y.age; p.ovr = y.ovr;
+    p.potMin = y.potMin; p.potMax = y.potMax; p.note = y.note;
     save('squad');
   }
 
@@ -957,15 +999,121 @@
     if (tab === 'potential') renderPotential();
   }
 
+  // ===================== Karriere-Stände =====================
+  const careerOf = id => careers.find(c => c.id === id);
+
+  function renderCareerName() {
+    const c = careerOf(activeCareer);
+    $('#careerName').textContent = c ? c.name : 'Karriere';
+    syncHeaderHeight();
+  }
+
+  // Kurzinfo direkt aus dem Speicher der jeweiligen Karriere
+  function careerInfo(id) {
+    let squad = null, youth = null;
+    try { squad = JSON.parse(localStorage.getItem(storeKey('squad', id))); } catch (e) { /* egal */ }
+    try { youth = JSON.parse(localStorage.getItem(storeKey('youth', id))); } catch (e) { /* egal */ }
+    const n = squad && Array.isArray(squad.players) ? squad.players.length : 0;
+    const j = Array.isArray(youth) ? youth.length : 0;
+    return (squad && squad.club ? esc(squad.club) + ' · ' : '') + n + ' Spieler · ' + j + ' Talente';
+  }
+
+  function openCareers() {
+    const html = '<h3>Karrieren</h3>' +
+      '<p class="hint">Jeder Stand hat eigenen Kader, eigene Aufstellung und eigene Talente. Umschalten geht jederzeit – gespeichert wird automatisch.</p>' +
+      '<ul class="card-list">' + careers.map(c => {
+        const aktiv = c.id === activeCareer;
+        return '<li class="p-card' + (aktiv ? ' career-active' : '') + '">' +
+          '<button class="career-pick" data-action="career-switch" data-cid="' + c.id + '">' +
+            '<div class="p-name">' + esc(c.name) + (aktiv ? ' <span class="promo-badge">aktiv</span>' : '') + '</div>' +
+            '<div class="p-meta">' + careerInfo(c.id) + '</div>' +
+          '</button>' +
+          '<div class="y-actions">' +
+            '<button class="mini-btn" data-action="career-rename" data-cid="' + c.id + '" title="Umbenennen">✏️</button>' +
+            '<button class="mini-btn" data-action="career-copy" data-cid="' + c.id + '" title="Kopieren">⧉</button>' +
+            (careers.length > 1 ? '<button class="mini-btn" data-action="career-del" data-cid="' + c.id + '" title="Löschen">🗑️</button>' : '') +
+          '</div></li>';
+      }).join('') + '</ul>' +
+      '<div class="md-actions"><button class="primary-btn" data-action="career-new">+ Neue Karriere</button></div>';
+    openModal(html);
+  }
+
+  function careerSwitch(id) {
+    if (!careerOf(id) || id === activeCareer) { closeModal(); return; }
+    saveAll();                       // aktuellen Stand sichern, bevor umgeschaltet wird
+    activeCareer = id;
+    localStorage.setItem(CAREER_ACTIVE, id);
+    load();
+    renderCareerName(); renderAll(); closeModal();
+  }
+
+  function careerNew() {
+    openPrompt('Neue Karriere', [
+      { k: 'name', label: 'Name', value: 'Karriere ' + (careers.length + 1),
+        hint: 'z. B. „Dortmund 2. Saison“ oder „Rebuild Milan“.' }
+    ], v => {
+      const id = 'fc_c' + Date.now().toString(36);
+      careers.push({ id: id, name: v.name || 'Karriere ' + (careers.length + 1) });
+      saveCareers();
+      saveAll();
+      activeCareer = id;
+      localStorage.setItem(CAREER_ACTIVE, id);
+      PARTS.forEach(k => { state[k] = clone(DEFAULT_DATA[k]); });
+      ensureStructure(); saveAll();
+      renderCareerName(); renderAll(); closeModal();
+    });
+  }
+
+  function careerRename(id) {
+    const c = careerOf(id);
+    if (!c) return;
+    openPrompt('Karriere umbenennen', [{ k: 'name', label: 'Name', value: c.name }], v => {
+      if (!v.name) return;
+      c.name = v.name; saveCareers(); renderCareerName(); openCareers();
+    });
+  }
+
+  function careerCopy(id) {
+    const c = careerOf(id);
+    if (!c) return;
+    if (id === activeCareer) saveAll();     // damit die Kopie den aktuellen Stand trifft
+    const neu = 'fc_c' + Date.now().toString(36);
+    PARTS.forEach(k => {
+      const raw = localStorage.getItem(storeKey(k, id));
+      if (raw != null) localStorage.setItem(storeKey(k, neu), raw);
+    });
+    careers.push({ id: neu, name: c.name + ' (Kopie)' });
+    saveCareers(); openCareers();
+  }
+
+  function careerDel(id) {
+    const c = careerOf(id);
+    if (!c || careers.length < 2) return;
+    if (!confirm('Karriere „' + c.name + '“ mit Kader und allen Talenten endgültig löschen?')) return;
+    PARTS.forEach(k => localStorage.removeItem(storeKey(k, id)));
+    careers = careers.filter(x => x.id !== id);
+    saveCareers();
+    if (id === activeCareer) {
+      activeCareer = careers[0].id;
+      localStorage.setItem(CAREER_ACTIVE, activeCareer);
+      load(); renderCareerName(); renderAll();
+    }
+    openCareers();
+  }
+
   // ===================== Export / Import / Reset =====================
+  // Exportiert die AKTIVE Karriere. Schlüssel bleiben "fc_squad" usw.,
+  // damit ältere Backups weiterhin eingelesen werden können.
   function exportData() {
-    const dump = { _meta: { app: 'fc26-karriere', version: 1, exported: new Date().toISOString() } };
-    for (const k in KEYS) dump[KEYS[k]] = state[k];
+    const c = careerOf(activeCareer);
+    const dump = { _meta: { app: 'fc26-karriere', version: 2, karriere: c ? c.name : '', exported: new Date().toISOString() } };
+    PARTS.forEach(k => dump['fc_' + k] = state[k]);
     const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const name = (c ? c.name : 'karriere').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     a.href = url;
-    a.download = 'fc26-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.download = 'fc26-' + (name || 'karriere') + '-' + new Date().toISOString().slice(0, 10) + '.json';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -976,20 +1124,42 @@
       let d;
       try { d = JSON.parse(r.result); }
       catch (e) { alert('Import fehlgeschlagen: Datei ist kein gültiges JSON.'); return; }
-      const present = Object.values(KEYS).filter(k => d[k] != null);
-      if (!present.length) { alert('Import fehlgeschlagen: keine bekannten Daten in der Datei.'); return; }
-      if (!confirm('Aktuelle Daten mit diesem Backup überschreiben? Das kann nicht rückgängig gemacht werden.')) return;
-      for (const k in KEYS) { if (d[KEYS[k]] != null) state[k] = d[KEYS[k]]; }
-      ensureStructure(); saveAll(); renderAll();
-      alert('Import erfolgreich.');
+      if (!PARTS.some(k => d['fc_' + k] != null)) { alert('Import fehlgeschlagen: keine bekannten Daten in der Datei.'); return; }
+
+      const herkunft = d._meta && d._meta.karriere ? d._meta.karriere : '';
+      openPrompt('Backup einlesen', [
+        { k: 'ziel', label: 'Wohin?', type: 'select', value: 'new',
+          options: [
+            { v: 'new', t: 'als neue Karriere anlegen' },
+            { v: 'cur', t: 'aktuelle Karriere überschreiben' }
+          ],
+          hint: herkunft ? 'Backup stammt aus „' + herkunft + '“.' : '' },
+        { k: 'name', label: 'Name der neuen Karriere', value: herkunft || 'Import' }
+      ], v => {
+        if (v.ziel === 'cur') {
+          if (!confirm('Die aktuelle Karriere wird überschrieben. Das kann nicht rückgängig gemacht werden. Fortfahren?')) return;
+        } else {
+          const id = 'fc_c' + Date.now().toString(36);
+          careers.push({ id: id, name: v.name || 'Import' });
+          saveCareers();
+          saveAll();                 // bisherigen Stand sichern
+          activeCareer = id;
+          localStorage.setItem(CAREER_ACTIVE, id);
+          PARTS.forEach(k => { state[k] = clone(DEFAULT_DATA[k]); });
+        }
+        PARTS.forEach(k => { if (d['fc_' + k] != null) state[k] = d['fc_' + k]; });
+        ensureStructure(); saveAll(); renderCareerName(); renderAll();
+        alert('Import erfolgreich.');
+      });
     };
     r.readAsText(file);
   }
 
   function resetAll() {
-    if (!confirm('Kader, Aufstellung und alle Jugendspieler löschen und zurücksetzen?')) return;
+    const c = careerOf(activeCareer);
+    if (!confirm('Kader, Aufstellung und alle Jugendspieler der Karriere „' + (c ? c.name : '') + '“ löschen und zurücksetzen?')) return;
     if (!confirm('Wirklich sicher? Tipp: vorher exportieren. Endgültig zurücksetzen?')) return;
-    for (const k in KEYS) state[k] = clone(DEFAULT_DATA[k]);
+    PARTS.forEach(k => { state[k] = clone(DEFAULT_DATA[k]); });
     saveAll(); renderAll(); switchTab('search');
   }
 
@@ -1014,9 +1184,17 @@
     const a = btn.dataset.action;
     const i = btn.dataset.i != null ? +btn.dataset.i : null;
     const id = btn.dataset.id;
+    const cid = btn.dataset.cid;
     const slot = btn.dataset.slot != null ? +btn.dataset.slot : null;
 
     switch (a) {
+      case 'careers':        openCareers(); break;
+      case 'career-switch':  careerSwitch(cid); break;
+      case 'career-new':     careerNew(); break;
+      case 'career-rename':  careerRename(cid); break;
+      case 'career-copy':    careerCopy(cid); break;
+      case 'career-del':     careerDel(cid); break;
+
       case 'open-player':  openPlayer(i); break;
       case 'to-squad':     squadFromDb(i); break;
       case 'to-youth':     youthFromDb(i); break;
@@ -1076,8 +1254,10 @@
   window.addEventListener('resize', syncHeaderHeight);
 
   // ===================== Start =====================
+  loadCareers();
   load();
   syncHeaderHeight();
+  renderCareerName();
   renderAll();
   switchTab('search');
   loadDb();   // im Hintergrund, die App ist währenddessen bedienbar
