@@ -137,8 +137,11 @@
       <div id="teamSquadView" hidden>
         <p id="squadInfo" class="result-info"></p>
         <ul id="squadList" class="card-list"></ul>
-        <button class="add-btn" data-action="squad-search">🔍 Spieler aus der Datenbank hinzufügen</button>
-        <p class="hint" style="margin-top:8px">Eigene Spieler (Jugendakademie, Regen-Talente) legst du im Jugend-Tab an und ziehst sie dort mit „⬆️ Hochziehen“ in die Senioren.</p>
+        <div class="data-tools" style="margin-top:12px">
+          <button class="tool-btn" data-action="squad-search">🔍 Aus der Datenbank</button>
+          <button class="tool-btn" data-action="squad-new">✏️ Neu erstellen</button>
+        </div>
+        <p class="hint" style="margin-top:8px">Spieler, die es zum Karrierestart noch nicht gab (Regens, Newgens), legst du mit „Neu erstellen“ an. Eigene Jugendtalente gehören in den Jugend-Tab und kommen von dort mit „⬆️ Hochziehen“ hierher.</p>
       </div>
 
       <div id="teamStatsView" hidden>

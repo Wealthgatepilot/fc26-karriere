@@ -406,13 +406,14 @@
       ? state.squad.players.length + ' Spieler im Kader'
       : 'Noch kein Spieler im Kader – über Suche, Datenbank oder Jugend hinzufügen.';
     $('#squadList').innerHTML = list.map(p => {
-      const wachs = p.potMax - p.ovr;
+      // Wachstums-Badge nur bei bekannter Zahl: bei "90+" wäre "+31" (bis 99) irreführend
+      const wachs = p.potMin === p.potMax ? p.potMax - p.ovr : 0;
       return '<li class="p-card">' +
         '<div class="p-main">' +
           '<div class="p-name">' + esc(p.name) + '</div>' +
           '<div class="p-meta">' + (p.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
             ' ' + (p.age || '?') + ' J.' + (p.club ? ' · ' + esc(p.club) : '') +
-            (p.src === 'youth' ? ' · 🌱 Jugend' : '') + '</div>' +
+            (p.src === 'youth' ? ' · 🌱 Jugend' : p.src === 'manual' ? ' · ✏️ selbst angelegt' : '') + '</div>' +
         '</div>' +
         '<div class="p-rat-wrap"><div class="p-rat"><span class="p-ovr ' + ratClass(p.ovr) + '">' + p.ovr + '</span>' +
           '<span class="p-arrow">→</span><span class="p-pot">' + potLabel(p) + '</span></div>' +
@@ -655,27 +656,29 @@
     if (teamView !== 'pitch') switchTeamView('pitch'); else renderTeam();
   }
 
-  // Nur Bearbeiten – neue Spieler kommen aus der Datenbank oder aus dem Jugend-Tab
+  // Bearbeiten (id gesetzt) oder neu anlegen (id null) – Letzteres für Spieler,
+  // die es zum Karrierestart nicht gab und die deshalb in keiner Datenbank stehen.
   function squadEdit(id) {
-    const p = findSquad(id);
-    if (!p) return;
-    openPrompt('Spieler bearbeiten', [
-      { k: 'name', label: 'Name', value: p.name },
-      { k: 'pos',  label: 'Positionen (Komma-getrennt, z. B. ST, LW)', value: (p.pos || []).join(', ') },
-      { k: 'age',  label: 'Alter', type: 'number', value: p.age },
-      { k: 'ovr',  label: 'Overall', type: 'number', value: p.ovr },
+    const p = id ? findSquad(id) : null;
+    if (id && !p) return;
+    openPrompt(p ? 'Spieler bearbeiten' : 'Neuen Spieler erstellen', [
+      { k: 'name', label: 'Name', value: p ? p.name : '',
+        hint: p ? '' : 'Für Regens, Newgens und andere Spieler, die es zum Karrierestart noch nicht gab.' },
+      { k: 'pos',  label: 'Positionen (Komma-getrennt, z. B. ST, LW)', value: p ? (p.pos || []).join(', ') : '' },
+      { k: 'age',  label: 'Alter', type: 'number', value: p ? p.age : '' },
+      { k: 'ovr',  label: 'Overall', type: 'number', value: p ? p.ovr : '' },
       { k: 'pot',  label: 'Potenzial als Zahl (z. B. aus dem Scout-Bericht)', type: 'number',
-        value: p.potMin === p.potMax ? p.potMax : '',
+        value: p && p.potMin === p.potMax ? p.potMax : '',
         hint: 'Leer lassen, wenn du unten den Text aus dem Kadermenü wählst.' },
       { k: 'tier', label: 'oder: Text aus dem Kadermenü', type: 'select', value: '',
         options: [{ v: '', t: '– kein Text gewählt –' }].concat(
           POTENTIAL_TIERS.map(t => ({ v: t.key, t: t.en + '  (' + rangeLabel(t) + ')' }))) },
-      { k: 'club', label: 'Verein (optional)', value: p.club || '' }
+      { k: 'club', label: 'Verein (optional)', value: p ? p.club || '' : '' }
     ], v => {
       if (!v.name) return;
       const ovr = parseInt(v.ovr, 10) || 0;
       const bereich = potBereich(v, ovr, p);
-      Object.assign(p, {
+      const data = {
         name: v.name,
         pos: parsePositions(v.pos),
         age: parseInt(v.age, 10) || 0,
@@ -683,7 +686,9 @@
         potMin: bereich[0],
         potMax: bereich[1],
         club: v.club
-      });
+      };
+      if (p) Object.assign(p, data);
+      else state.squad.players.push(Object.assign({ id: uid(), src: 'manual' }, data));
       save('squad'); renderTeam();
     });
   }
@@ -703,8 +708,11 @@
   }
 
   // ===================== Tab: Jugend =====================
-  function potLabel(y) {
-    return y.potMin === y.potMax ? String(y.potMin) : y.potMin + '–' + y.potMax;
+  // "87" bei bekannter Zahl, "85–89" bei einem Textbereich, "90+" wenn er nach oben offen ist
+  function potLabel(o) {
+    if (o.potMin === o.potMax) return String(o.potMax);
+    if (o.potMax >= 99) return o.potMin + '+';
+    return o.potMin + '–' + o.potMax;
   }
 
   function renderYouth() {
@@ -748,8 +756,10 @@
         '</div>' +
         '<div class="growth-bar"><i style="width:' + startPct + '%"></i>' +
           '<u style="left:' + Math.min(startPct, minPct) + '%;width:' + Math.max(0, potPct - Math.min(startPct, minPct)) + '%"></u></div>' +
-        '<div class="growth-lbl"><span>' + y.ovr + ' jetzt</span>' +
-          '<span>noch ' + Math.max(0, y.potMax - y.ovr) + ' möglich</span></div>' +
+        '<div class="growth-lbl"><span>' + y.ovr + ' jetzt</span><span>' +
+          (y.potMax >= 99 && y.potMin !== y.potMax
+            ? 'noch mindestens ' + Math.max(0, y.potMin - y.ovr) + ' möglich'
+            : 'noch ' + Math.max(0, y.potMax - y.ovr) + ' möglich') + '</span></div>' +
         '<div class="tier-row ' + t.farbe + '" style="margin-top:10px">' +
           '<div class="tier-en">' + esc(t.en) + '</div><div class="tier-de">' + esc(t.de) + '</div>' +
           (y.ovr < 60 ? '<span class="tier-unsure">Unter 60 Overall zeigt das Spiel noch keinen Potenzial-Text an.</span>' : '') +
@@ -1216,6 +1226,7 @@
       case 'load-club':     loadClub(); break;
       case 'auto-lineup':   autoLineup(); break;
       case 'squad-search':  openSquadSearch(); break;
+      case 'squad-new':     squadEdit(null); break;
       case 'squad-add-db':  squadAddFromSearch(i); break;
       case 'squad-edit':    squadEdit(id); break;
       case 'squad-del':     squadDel(id); break;
