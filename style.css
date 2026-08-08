@@ -11,6 +11,9 @@
   --green:     #27ae60;
   --red:       #c0392b;
   --yellow:    #f1c40f;
+  /* Gelb als Rahmen ist auch auf Weiß erkennbar, als Schriftfarbe nicht mehr –
+     dafür gibt es eine zweite, dunklere Variante für Text. */
+  --yellow-txt: #f1c40f;
   --blue:      #3498db;
   --purple:    #9b59b6;
   --border:    #2c4335;
@@ -28,6 +31,7 @@
     --text:      #14251b;
     --text-dim:  #5c7365;
     --border:    #cadbcf;
+    --yellow-txt: #8a6100;
   }
 }
 
@@ -160,6 +164,46 @@ input, select { font-family: inherit; font-size: 16px; }
   padding: 10px 12px; display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
 }
 .p-main { flex: 1; min-width: 0; }
+/* Name + Meta als ein großes Tippziel: öffnet die Info-Ansicht */
+.name-btn {
+  flex: 1; min-width: 0; background: none; text-align: left; padding: 2px 0;
+  display: block; color: inherit;
+}
+.menu-btn {
+  flex: 0 0 auto; background: none; color: var(--text-dim);
+  width: 44px; min-height: 44px; align-self: stretch; font-size: 1.35rem; line-height: 1;
+  border-radius: 8px; margin-right: -6px;   /* optischer Rand bleibt, Tippziel wird größer */
+}
+.menu-btn:active { background: var(--bg-elev); }
+
+/* Verliehene Spieler deutlich absetzen */
+.p-card.on-loan {
+  border-color: var(--yellow);
+  box-shadow: inset 3px 0 0 var(--yellow);
+  background: linear-gradient(90deg, rgba(241,196,15,.10), transparent 60%), var(--bg-card);
+}
+.loan-strip {
+  margin-top: 5px; font-size: .7rem; font-weight: 700; color: var(--yellow-txt);
+}
+.loan-box {
+  background: rgba(241,196,15,.12); border: 1px solid var(--yellow);
+  border-radius: 10px; padding: 10px 12px; font-size: .84rem; margin-bottom: 12px;
+}
+.loan-btn { align-self: center; }
+.y-card.too-young { opacity: .92; }
+
+/* Aktionsmenü (⋮) */
+.menu-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.menu-list button {
+  width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
+  background: var(--bg-card-2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; min-height: var(--tap);
+}
+.menu-list button:active { background: var(--bg-elev); }
+.menu-list button.dim { opacity: .5; }
+.menu-list .m-ico { font-size: 1.2rem; flex: 0 0 auto; }
+.menu-list b { font-weight: 600; display: block; font-size: .95rem; }
+.menu-list small { color: var(--text-dim); font-size: .74rem; }
 .p-name { font-weight: 700; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-meta { font-size: .78rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-rat-wrap { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; }
@@ -172,7 +216,7 @@ input, select { font-family: inherit; font-size: 16px; }
   display: inline-block; background: var(--bg-elev); border-radius: 5px;
   padding: 0 5px; font-size: .68rem; font-weight: 700; margin-right: 3px;
 }
-.rat-90 { color: var(--yellow); }
+.rat-90 { color: var(--yellow-txt); }
 .rat-80 { color: var(--accent-2); }
 .rat-70 { color: var(--text); }
 .rat-lo { color: var(--text-dim); }
@@ -190,7 +234,7 @@ input, select { font-family: inherit; font-size: 16px; }
 .tier-en { font-weight: 700; }
 .tier-de { font-size: .82rem; color: var(--text-dim); font-style: italic; }
 .tier-range { float: right; font-weight: 800; font-size: 1.05rem; }
-.tier-unsure { display: block; margin-top: 5px; font-size: .74rem; color: var(--yellow); }
+.tier-unsure { display: block; margin-top: 5px; font-size: .74rem; color: var(--yellow-txt); }
 .calc-box {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 12px; margin-bottom: 10px;
@@ -265,7 +309,6 @@ input, select { font-family: inherit; font-size: 16px; }
 }
 .promo-badge { background: var(--accent); color: #fff; }
 .wait-badge  { background: var(--bg-elev); color: var(--text-dim); }
-.mini-btn.dim { opacity: .4; }
 .y-actions { display: flex; gap: 4px; }
 .growth-bar {
   position: relative; height: 12px; border-radius: 6px; background: var(--bg-elev);
@@ -315,6 +358,8 @@ input, select { font-family: inherit; font-size: 16px; }
   background: var(--bg-card-2); border-radius: 8px; padding: 8px 10px; font-size: .85rem;
 }
 .md-grid b { display: block; font-size: 1rem; }
+/* Beschriftung muss sich klar vom Wert absetzen, sonst liest sich beides wie Inhalt */
+.md-grid .s-lbl { display: block; margin-top: 2px; font-size: .72rem; color: var(--text-dim); }
 .md-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .md-actions button { flex: 1; min-width: 140px; }
 

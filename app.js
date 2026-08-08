@@ -75,6 +75,53 @@
     .toLowerCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
     .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 
+  // "Thomas Müller" -> "T. Müller". Namen, die schon so aussehen, bleiben unangetastet,
+  // Einzelnamen (Rodrygo) auch. Suffixe zählen zum Nachnamen, sonst würde aus
+  // "Vini Jr." ein sinnloses "V. Jr.".
+  const NAMENS_SUFFIXE = ['jr.', 'jr', 'sr.', 'sr', 'ii', 'iii', 'iv'];
+  // Steht ein Namenspartikel vorn, ist der ganze String der Nachname ("De Gea", "del Cerro")
+  const NAME_PARTIKEL = ['de', 'del', 'della', 'di', 'da', 'das', 'dos', 'du', 'van', 'von', 'der',
+                         'den', 'ter', 'ten', 'le', 'la', 'al', 'bin', 'ibn', 'mac', 'st.'];
+  // Bei ostasiatischer Reihenfolge steht der FAMILIENname vorn – da würde Abkürzen
+  // genau den identifizierenden Teil wegwerfen ("Lee Kang In" -> "L. Kang In").
+  const OSTASIEN_NACHNAMEN = ['kim', 'lee', 'park', 'choi', 'jung', 'jeong', 'hwang', 'kang', 'cho',
+    'yoon', 'yun', 'jang', 'lim', 'han', 'oh', 'seo', 'shin', 'kwon', 'hong', 'song', 'ko', 'ki',
+    'paik', 'nam', 'ahn', 'joo', 'bae', 'moon', 'ryu', 'son', 'hu', 'wu', 'wang', 'li', 'zhang',
+    'liu', 'chen', 'yang', 'huang', 'zhao', 'zhou', 'xu', 'sun', 'ma', 'zhu', 'guo', 'lin', 'gao',
+    'luo', 'tan', 'feng', 'deng', 'cao', 'peng', 'ye', 'yu', 'fan', 'wei', 'jiang', 'shen', 'xie',
+    'tang', 'xiao', 'dai', 'ding', 'cheng', 'pan', 'yuan', 'yao', 'lu', 'zeng', 'fu', 'zhong',
+    'jia', 'qiu', 'meng', 'qin', 'shi', 'hou', 'bai', 'cui', 'kong', 'mao', 'duan', 'chow'];
+
+  function kurzName(n, sicherWestlich) {
+    const s = (n == null ? '' : String(n)).trim();
+    if (!s || /^\S\.\s/.test(s)) return s;
+    const teile = s.split(/\s+/);
+    if (teile.length < 2) return s;
+    // "Vini Jr." besteht nur aus Rufname + Suffix – da gibt es nichts abzukürzen
+    if (teile.length === 2 && NAMENS_SUFFIXE.indexOf(teile[1].toLowerCase()) >= 0) return s;
+    const erst = teile[0].toLowerCase().replace(/[.,]$/, '');
+    if (NAME_PARTIKEL.indexOf(erst) >= 0) return s;
+    // Nur wo die Herkunft des Namens unbekannt ist, wird die Namensliste befragt.
+    // Bei Datenbank-Spielern entscheidet stattdessen der Langname (siehe anzeigeName).
+    if (!sicherWestlich && OSTASIEN_NACHNAMEN.indexOf(erst) >= 0) return s;
+    return teile[0].charAt(0).toUpperCase() + '. ' + teile.slice(1).join(' ');
+  }
+
+  // voll === true  -> Langname enthält CJK/Hangul, Familienname steht vorn: nie abkürzen
+  // voll === false -> Datenbank-Spieler, nachweislich westliche Reihenfolge
+  // voll undefined -> selbst eingetippt oder Altbestand: vorsichtige Variante
+  function anzeigeName(p) {
+    if (!p) return '';
+    if (p.voll === true) return p.name;
+    return kurzName(p.name, p.voll === false);
+  }
+
+  // Hiragana/Katakana, CJK-Ideogramme, Hangul – Kennzeichen für asiatische Namensreihenfolge
+  const CJK = new RegExp('[\\u3040-\\u30ff\\u3400-\\u9fff\\uac00-\\ud7af]');
+  const vz = n => (n >= 0 ? '+' + n : String(n));
+
+  const sterne = n => '★'.repeat(Math.max(0, Math.min(5, n || 0))) + '☆'.repeat(5 - Math.max(0, Math.min(5, n || 0)));
+
   function fmtMoney(v) {
     if (!v) return '–';
     if (v >= 1e6) return (v / 1e6).toFixed(v >= 1e7 ? 0 : 1).replace('.', ',') + ' Mio. €';
@@ -414,40 +461,154 @@
       return '<button class="slot ' + cls + '" data-action="slot" data-slot="' + idx + '"' +
         ' style="left:' + s.x + '%;bottom:' + s.y + '%">' +
         '<span class="s-pos">' + s.p + '</span>' +
-        (pl ? '<span class="s-name">' + esc(pl.name) + '</span><span class="s-ovr">' + pl.ovr + '</span>'
+        (pl ? '<span class="s-name">' + esc(anzeigeName(pl)) + '</span><span class="s-ovr">' + pl.ovr + '</span>'
             : '<span class="s-name">frei</span>') +
         '</button>';
     }).join('');
   }
 
+  // Eine Karte für Kader- und Leih-Ansicht. Name öffnet die Infos, ⋮ das Aktionsmenü –
+  // dadurch bleibt in der Zeile Platz für den Namen statt für drei Knöpfe.
+  function squadCard(p) {
+    const wachs = p.potMin === p.potMax ? p.potMax - p.ovr : 0;
+    const herkunft = p.src === 'youth' ? ' · 🌱 Jugend' : p.src === 'manual' ? ' · ✏️ selbst' : '';
+    return '<li class="p-card' + (p.loan ? ' on-loan' : '') + '">' +
+      '<button class="name-btn" data-action="info-squad" data-id="' + p.id + '">' +
+        '<div class="p-name">' + esc(anzeigeName(p)) + '</div>' +
+        '<div class="p-meta">' + (p.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
+          ' ' + (p.age || '?') + ' J.' + (p.club ? ' · ' + esc(p.club) : '') + herkunft + '</div>' +
+        (p.loan ? '<div class="loan-strip">📤 verliehen – 📥 Rückkehr im Menü eintragen</div>' : '') +
+      '</button>' +
+      '<div class="p-rat-wrap"><div class="p-rat">' +
+        '<span class="p-ovr ' + ratClass(p.ovr) + '">' + p.ovr + '</span>' +
+        '<span class="p-arrow">→</span><span class="p-pot">' + potLabel(p) + '</span></div>' +
+        (wachs > 0 ? '<span class="p-growth">+' + wachs + '</span>' : '') + '</div>' +
+      '<button class="menu-btn" data-action="menu-squad" data-id="' + p.id + '" title="Menü">⋮</button>' +
+      '</li>';
+  }
+
   function renderSquadList() {
     const list = state.squad.players.slice().sort((a, b) => b.ovr - a.ovr);
+    const verliehen = list.filter(p => p.loan).length;
     $('#squadInfo').textContent = state.squad.players.length
-      ? state.squad.players.length + ' Spieler im Kader'
+      ? state.squad.players.length + ' Spieler im Kader' + (verliehen ? ' · ' + verliehen + ' verliehen' : '')
       : 'Noch kein Spieler im Kader – über Suche, Datenbank oder Jugend hinzufügen.';
-    $('#squadList').innerHTML = list.map(p => {
-      // Wachstums-Badge nur bei bekannter Zahl: bei "90+" wäre "+31" (bis 99) irreführend
-      const wachs = p.potMin === p.potMax ? p.potMax - p.ovr : 0;
-      return '<li class="p-card">' +
-        '<div class="p-main">' +
-          '<div class="p-name">' + esc(p.name) +
-            (p.loan ? ' <span class="promo-badge">📤 verliehen</span>' : '') + '</div>' +
-          '<div class="p-meta">' + (p.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
-            ' ' + (p.age || '?') + ' J.' + (p.club ? ' · ' + esc(p.club) : '') +
-            (p.src === 'youth' ? ' · 🌱 Jugend' : p.src === 'manual' ? ' · ✏️ selbst angelegt' : '') +
-            (p.seasons && p.seasons.length
-              ? ' · 📈 ' + p.seasons.length + (p.seasons.length === 1 ? ' Saison' : ' Saisons') + ' erfasst' : '') + '</div>' +
-        '</div>' +
-        '<div class="p-rat-wrap"><div class="p-rat"><span class="p-ovr ' + ratClass(p.ovr) + '">' + p.ovr + '</span>' +
-          '<span class="p-arrow">→</span><span class="p-pot">' + potLabel(p) + '</span></div>' +
-          (wachs > 0 ? '<span class="p-growth">+' + wachs + '</span>' : '') + '</div>' +
-        '<div class="y-actions">' +
-          '<button class="mini-btn" data-action="loan-toggle" data-id="' + p.id + '" title="' +
-            (p.loan ? 'Rückkehr aus der Leihe eintragen' : 'Verleihen') + '">' + (p.loan ? '📥' : '📤') + '</button>' +
-          '<button class="mini-btn" data-action="squad-edit" data-id="' + p.id + '" title="Bearbeiten">✏️</button>' +
-          '<button class="mini-btn" data-action="squad-del" data-id="' + p.id + '" title="Entfernen">🗑️</button>' +
-        '</div></li>';
-    }).join('');
+    $('#squadList').innerHTML = list.map(squadCard).join('');
+  }
+
+  // ===================== Aktionsmenü (⋮) =====================
+  function menuHtml(titel, punkte) {
+    return '<h3>' + esc(titel) + '</h3><ul class="menu-list">' + punkte.map(m =>
+      '<li><button data-action="' + m.a + '" data-id="' + m.id + '" data-close="1"' +
+        (m.dim ? ' class="dim"' : '') + '>' +
+        '<span class="m-ico">' + m.ico + '</span>' +
+        '<span><b>' + esc(m.txt) + '</b>' + (m.sub ? '<small>' + esc(m.sub) + '</small>' : '') + '</span>' +
+        '</button></li>').join('') + '</ul>';
+  }
+
+  function openSquadMenu(id) {
+    const p = findSquad(id);
+    if (!p) return;
+    openModal(menuHtml(anzeigeName(p), [
+      { a: 'info-squad',  id: id, ico: 'ℹ️', txt: 'Infos anzeigen', sub: 'Alle Werte, Leihen, Saisons' },
+      { a: 'squad-edit',  id: id, ico: '✏️', txt: 'Bearbeiten', sub: 'Werte, Positionen, Potenzial' },
+      p.loan
+        ? { a: 'loan-toggle', id: id, ico: '📥', txt: 'Rückkehr aus der Leihe', sub: 'Zuwachs eintragen' }
+        : { a: 'loan-toggle', id: id, ico: '📤', txt: 'Als verliehen markieren', sub: 'für den Leih-Glitch' },
+      { a: 'squad-del',   id: id, ico: '🗑️', txt: 'Aus dem Kader entfernen' }
+    ]));
+  }
+
+  function openYouthMenu(id) {
+    const y = findYouth(id);
+    if (!y) return;
+    const jung = zuJung(y);
+    openModal(menuHtml(anzeigeName(y), [
+      { a: 'info-youth',    id: id, ico: 'ℹ️', txt: 'Infos anzeigen', sub: 'Alle Werte und Saisons' },
+      { a: 'youth-season',  id: id, ico: '➕', txt: 'Saison eintragen', sub: 'neues Alter und Overall' },
+      { a: 'youth-compare', id: id, ico: '⚖️', txt: 'Mit Datenbank vergleichen' },
+      { a: 'youth-promote', id: id, ico: '⬆️', txt: 'In die Senioren hochziehen',
+        sub: jung ? 'erst ab ' + HOCHZIEH_ALTER + ' Jahren' : 'wechselt in den Kader', dim: jung },
+      { a: 'youth-edit',    id: id, ico: '✏️', txt: 'Bearbeiten' },
+      { a: 'youth-del',     id: id, ico: '🗑️', txt: 'Löschen' }
+    ]));
+  }
+
+  // ===================== Info-Ansicht =====================
+  function infoGrid(p) {
+    const pot = potLabel(p);
+    return '<div class="md-grid">' +
+      '<div>' + ((p.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') || '–') +
+        '<span class="s-lbl">Positionen</span></div>' +
+      '<div><b>' + (p.age || '?') + ' Jahre</b><span class="s-lbl">Alter</span></div>' +
+      '<div><b class="' + ratClass(p.ovr) + '">' + p.ovr + '</b><span class="s-lbl">Overall</span></div>' +
+      '<div><b>' + pot + '</b><span class="s-lbl">Potenzial' +
+        (p.potMin !== p.potMax ? ' (Spanne)' : '') + '</span></div>' +
+      // Nicht eingetragen ist etwas anderes als null Sterne – deshalb ein Strich statt ☆☆☆☆☆
+      '<div><b>' + (p.skills ? sterne(p.skills) : '–') + '</b><span class="s-lbl">Skill-Moves' +
+        (p.skills ? '' : ' (nicht eingetragen)') + '</span></div>' +
+      '<div><b>' + (p.weak ? sterne(p.weak) : '–') + '</b><span class="s-lbl">Schwacher Fuß' +
+        (p.weak ? '' : ' (nicht eingetragen)') + '</span></div>' +
+      '</div>';
+  }
+
+  function seasonListHtml(seasons) {
+    if (!seasons || !seasons.length) return '';
+    const s = seasons.slice().sort((a, b) => a.season - b.season);
+    return '<div class="section-divider">Saison-Verlauf</div><ul class="season-list">' + s.map((x, i) => {
+      const d = i > 0 ? x.ovr - s[i - 1].ovr : null;
+      const cls = d == null ? '' : d > 0 ? 'up' : d < 0 ? 'down' : 'flat';
+      return '<li><span>Saison ' + x.season + '</span><span>' + (x.age ? x.age + ' J.' : '') + '</span>' +
+        '<span style="flex:1"></span><span>' + x.ovr + ' OVR</span>' +
+        '<span class="s-delta ' + cls + '">' + (d == null ? '–' : (d > 0 ? '+' + d : d)) + '</span></li>';
+    }).join('') + '</ul>';
+  }
+
+  function openSquadInfo(id) {
+    const p = findSquad(id);
+    if (!p) return;
+    const log = p.loans || [];
+    const summe = log.reduce((s, x) => s + (x.ovr || 0), 0);
+    let html = '<div class="md-head"><div>' +
+      '<div class="md-name">' + esc(anzeigeName(p)) + '</div>' +
+      // Vollen Namen nur zeigen, wenn er sich von der Kurzform unterscheidet
+      '<div class="md-sub">' + (anzeigeName(p) === p.name ? '' : esc(p.name) + (p.club ? ' · ' : '')) +
+        (p.club ? esc(p.club) : '') + '</div></div></div>' +
+      (p.loan ? '<div class="loan-box">📤 Aktuell verliehen – trage nach Rückkehr oder Abbruch den Zuwachs ein.</div>' : '') +
+      infoGrid(p);
+    if (log.length) {
+      html += '<div class="section-divider">Leihen</div><ul class="note-list">' +
+        log.map((x, i) => '<li>' + (i + 1) + '. Leihe: Overall ' + vz(x.ovr || 0) +
+          (x.pot ? ', Potenzial ' + vz(x.pot) : '') + '</li>').join('') +
+        '</ul><p class="hint">Gesamt aus Leihen: ' + vz(summe) + ' Overall</p>';
+    }
+    html += seasonListHtml(p.seasons);
+    if (p.note) html += '<div class="section-divider">Notiz</div><p class="hint">' + esc(p.note) + '</p>';
+    html += '<div class="md-actions">' +
+      '<button class="primary-btn" data-action="squad-edit" data-id="' + p.id + '" data-close="1">✏️ Bearbeiten</button>' +
+      '<button class="tool-btn" data-action="loan-toggle" data-id="' + p.id + '" data-close="1">' +
+        (p.loan ? '📥 Rückkehr' : '📤 Verleihen') + '</button></div>';
+    openModal(html);
+  }
+
+  function openYouthInfo(id) {
+    const y = findYouth(id);
+    if (!y) return;
+    let html = '<div class="md-head"><div>' +
+      '<div class="md-name">' + esc(anzeigeName(y)) + '</div>' +
+      '<div class="md-sub">' + (anzeigeName(y) === y.name ? '' : esc(y.name) + ' · ') +
+        'Jugendakademie</div></div></div>' +
+      (zuJung(y) ? '<div class="loan-box">⏳ Mit ' + y.age + ' noch zu jung – hochziehen geht ab ' + HOCHZIEH_ALTER + '.</div>' : '') +
+      infoGrid(y) +
+      '<p class="hint">Noch ' + Math.max(0, (y.potMax >= 99 && y.potMin !== y.potMax ? y.potMin : y.potMax) - y.ovr) +
+        ' Punkte Luft nach oben.</p>' +
+      seasonListHtml(y.seasons);
+    if (y.note) html += '<div class="section-divider">Notiz</div><p class="hint">' + esc(y.note) + '</p>';
+    html += '<div class="md-actions">' +
+      '<button class="primary-btn" data-action="youth-season" data-id="' + y.id + '" data-close="1">➕ Saison</button>' +
+      '<button class="tool-btn" data-action="youth-compare" data-id="' + y.id + '" data-close="1">⚖️ Vergleich</button>' +
+      '<button class="tool-btn" data-action="youth-edit" data-id="' + y.id + '" data-close="1">✏️ Bearbeiten</button></div>';
+    openModal(html);
   }
 
   function mainGroupOf(pos) {
@@ -535,19 +696,20 @@
     const luft = luftNachOben(p);
     const log = p.loans || [];
     const summe = log.reduce((s, x) => s + (x.ovr || 0), 0);
-    return '<li class="p-card' + (p.loan ? ' career-active' : '') + '">' +
-      '<div class="p-main">' +
-        '<div class="p-name">' + esc(p.name) + (p.loan ? ' <span class="promo-badge">📤 verliehen</span>' : '') + '</div>' +
+    return '<li class="p-card' + (p.loan ? ' on-loan' : '') + '">' +
+      '<button class="name-btn" data-action="info-squad" data-id="' + p.id + '">' +
+        '<div class="p-name">' + esc(anzeigeName(p)) + '</div>' +
         '<div class="p-meta">' + (p.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
           ' ' + (p.age || '?') + ' J. · ' + (offen(p) ? 'mind. ' : '') + luft + ' Punkte Luft' +
           (log.length ? ' · ' + log.length + (log.length === 1 ? ' Leihe' : ' Leihen') +
-                        (summe ? ' (+' + summe + ' GES)' : '') : '') + '</div>' +
-      '</div>' +
+                        (summe ? ' (' + vz(summe) + ' GES)' : '') : '') + '</div>' +
+        (p.loan ? '<div class="loan-strip">📤 verliehen – Rückkehr über 📥 eintragen</div>' : '') +
+      '</button>' +
       '<div class="p-rat-wrap"><div class="p-rat">' +
         '<span class="p-ovr ' + ratClass(p.ovr) + '">' + p.ovr + '</span>' +
         '<span class="p-arrow">→</span><span class="p-pot">' + potLabel(p) + '</span></div></div>' +
-      '<div class="y-actions"><button class="mini-btn" data-action="loan-toggle" data-id="' + p.id + '" title="' +
-        (p.loan ? 'Rückkehr eintragen' : 'Als verliehen markieren') + '">' + (p.loan ? '📥' : '📤') + '</button></div>' +
+      '<button class="mini-btn loan-btn" data-action="loan-toggle" data-id="' + p.id + '" title="' +
+        (p.loan ? 'Rückkehr eintragen' : 'Als verliehen markieren') + '">' + (p.loan ? '📥' : '📤') + '</button>' +
       '</li>';
   }
 
@@ -631,7 +793,7 @@
         const lbl = fit === 'fit-main' ? 'Hauptposition' : fit === 'fit-alt' ? 'Nebenposition' : 'ungewohnt';
         return '<li><button class="p-card" data-action="slot-set" data-slot="' + idx + '" data-id="' + p.id + '">' +
           '<span class="fit-dot ' + fit + '"></span>' +
-          '<div class="p-main"><div class="p-name">' + esc(p.name) + '</div>' +
+          '<div class="p-main"><div class="p-name">' + esc(anzeigeName(p)) + '</div>' +
           '<div class="p-meta">' + (p.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
           ' ' + lbl + (belegt[p.id] ? ' · steht schon auf Platz ' + belegt[p.id] : '') + '</div></div>' +
           '<div class="p-rat"><span class="p-ovr ' + ratClass(p.ovr) + '">' + p.ovr + '</span></div>' +
@@ -662,7 +824,16 @@
 
   const dbPlayerObj = i => ({
     name: FC_PLAYERS[i][F.SHORT], pos: pPos(i), ovr: FC_PLAYERS[i][F.OVR],
-    potMin: FC_PLAYERS[i][F.POT], potMax: FC_PLAYERS[i][F.POT], age: FC_PLAYERS[i][F.AGE], club: pClub(i), src: 'db'
+    potMin: FC_PLAYERS[i][F.POT], potMax: FC_PLAYERS[i][F.POT], age: FC_PLAYERS[i][F.AGE], club: pClub(i),
+    weak: FC_PLAYERS[i][F.WEAK], skills: FC_PLAYERS[i][F.SKILLS],
+    // Langname mit CJK/Hangul heißt: Familienname steht vorn – dann nie abkürzen
+    voll: CJK.test(FC_PLAYERS[i][F.LONG] || ''), src: 'db'
+  });
+
+  // 1–5 Sterne als Auswahlfeld für die Eingabedialoge
+  const sternFeld = (k, label, wert) => ({
+    k: k, label: label, type: 'select', value: wert || '',
+    options: [{ v: '', t: '– unbekannt –' }].concat([1, 2, 3, 4, 5].map(n => ({ v: n, t: n + ' ★' })))
   });
 
   function squadFromDb(i) {
@@ -725,10 +896,7 @@
       for (let i = 0; i < FC_PLAYERS.length; i++) if (FC_PLAYERS[i][F.CLUB] === ci) idx.push(i);
       idx.sort((a, b) => FC_PLAYERS[b][F.OVR] - FC_PLAYERS[a][F.OVR]);
 
-      const neu = idx.map(i => ({
-        id: uid(), name: FC_PLAYERS[i][F.SHORT], pos: pPos(i), ovr: FC_PLAYERS[i][F.OVR],
-        potMin: FC_PLAYERS[i][F.POT], potMax: FC_PLAYERS[i][F.POT], age: FC_PLAYERS[i][F.AGE], club: FC_CLUBS[ci], src: 'db'
-      }));
+      const neu = idx.map(i => Object.assign({ id: uid() }, dbPlayerObj(i), { club: FC_CLUBS[ci] }));
 
       if (v.mode === 'replace') {
         if (state.squad.players.length &&
@@ -792,6 +960,8 @@
       { k: 'tier', label: 'oder: Text aus dem Kadermenü', type: 'select', value: '',
         options: [{ v: '', t: '– kein Text gewählt –' }].concat(
           POTENTIAL_TIERS.map(t => ({ v: t.key, t: t.en + '  (' + rangeLabel(t) + ')' }))) },
+      sternFeld('skills', 'Skill-Moves', p ? p.skills : ''),
+      sternFeld('weak', 'Schwacher Fuß', p ? p.weak : ''),
       { k: 'club', label: 'Verein (optional)', value: p ? p.club || '' : '' }
     ], v => {
       if (!v.name) return;
@@ -804,6 +974,8 @@
         ovr: ovr,
         potMin: bereich[0],
         potMax: bereich[1],
+        skills: parseInt(v.skills, 10) || 0,
+        weak: parseInt(v.weak, 10) || 0,
         club: v.club
       };
       if (p) Object.assign(p, data);
@@ -840,36 +1012,25 @@
       return;
     }
     ul.innerHTML = state.youth.map(y => {
-      const t = tierFor(y.potMax);
-      const tUnten = tierFor(y.potMin);   // bei einer Spanne kann die Untergrenze eine andere Stufe sein
       const spanne = 99 - 40;
       const startPct = Math.max(0, (y.ovr - 40) / spanne * 100);
       const potPct   = Math.max(0, (y.potMax - 40) / spanne * 100);
       const minPct   = Math.max(0, (y.potMin - 40) / spanne * 100);
-      const seasons = y.seasons.slice().sort((a, b) => a.season - b.season);
-
-      let sHtml = '';
-      if (seasons.length) {
-        sHtml = '<ul class="season-list">' + seasons.map((s, i) => {
-          const prev = i > 0 ? seasons[i - 1].ovr : null;
-          const d = prev == null ? null : s.ovr - prev;
-          const cls = d == null ? '' : d > 0 ? 'up' : d < 0 ? 'down' : 'flat';
-          return '<li><span>Saison ' + s.season + '</span><span>' + (s.age ? s.age + ' J.' : '') + '</span>' +
-            '<span style="flex:1"></span><span>' + s.ovr + ' OVR</span>' +
-            '<span class="s-delta ' + cls + '">' + (d == null ? '–' : (d > 0 ? '+' + d : d)) + '</span></li>';
-        }).join('') + '</ul>';
-      }
-
       const jung = zuJung(y);
+      const anzahl = (y.seasons || []).length;
 
-      return '<li class="y-card">' +
+      return '<li class="y-card' + (jung ? ' too-young' : '') + '">' +
         '<div class="y-head">' +
-          '<div class="p-main"><div class="p-name">' + esc(y.name) +
-            (jung ? ' <span class="wait-badge">⏳ ab ' + HOCHZIEH_ALTER + '</span>' : '') + '</div>' +
+          '<button class="name-btn" data-action="info-youth" data-id="' + y.id + '">' +
+            '<div class="p-name">' + esc(anzeigeName(y)) +
+              (jung ? ' <span class="wait-badge">⏳ ab ' + HOCHZIEH_ALTER + '</span>' : '') + '</div>' +
             '<div class="p-meta">' + (y.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
-            ' ' + (y.age || '?') + ' J.</div></div>' +
+              ' ' + (y.age || '?') + ' J.' +
+              (anzahl ? ' · 📈 ' + anzahl + (anzahl === 1 ? ' Saison' : ' Saisons') : '') + '</div>' +
+          '</button>' +
           '<div class="p-rat"><span class="p-ovr ' + ratClass(y.ovr) + '">' + y.ovr + '</span>' +
             '<span class="p-arrow">→</span><span class="p-pot">' + potLabel(y) + '</span></div>' +
+          '<button class="menu-btn" data-action="menu-youth" data-id="' + y.id + '" title="Menü">⋮</button>' +
         '</div>' +
         '<div class="growth-bar"><i style="width:' + startPct + '%"></i>' +
           '<u style="left:' + Math.min(startPct, minPct) + '%;width:' + Math.max(0, potPct - Math.min(startPct, minPct)) + '%"></u></div>' +
@@ -877,24 +1038,7 @@
           (y.potMax >= 99 && y.potMin !== y.potMax
             ? 'noch mindestens ' + Math.max(0, y.potMin - y.ovr) + ' möglich'
             : 'noch ' + Math.max(0, y.potMax - y.ovr) + ' möglich') + '</span></div>' +
-        '<div class="tier-row ' + t.farbe + '" style="margin-top:10px">' +
-          (tUnten.key === t.key
-            ? '<div class="tier-en">' + esc(t.en) + '</div><div class="tier-de">' + esc(t.de) + '</div>'
-            : '<div class="tier-en">' + esc(tUnten.key === 'none' ? 'noch kein Potenzial-Satz' : tUnten.en) +
-                ' … ' + esc(t.en) + '</div>' +
-              '<div class="tier-de">je nachdem, wo sein echter Wert in der Spanne liegt</div>') +
-          (y.ovr < 60 ? '<span class="tier-unsure">Unter 60 Overall zeigt das Spiel noch keinen Potenzial-Text an.</span>' : '') +
-        '</div>' +
-        (y.note ? '<p class="hint" style="margin:8px 0 0">' + esc(y.note) + '</p>' : '') +
-        sHtml +
-        '<div class="y-actions" style="margin-top:10px">' +
-          '<button class="mini-btn" data-action="youth-season" data-id="' + y.id + '" title="Saison eintragen">➕</button>' +
-          '<button class="mini-btn" data-action="youth-compare" data-id="' + y.id + '" title="Mit Datenbank vergleichen">⚖️</button>' +
-          '<button class="mini-btn' + (jung ? ' dim' : '') + '" data-action="youth-promote" data-id="' + y.id + '"' +
-            ' title="' + (jung ? 'Erst ab ' + HOCHZIEH_ALTER + ' Jahren möglich' : 'In die Senioren hochziehen') + '">⬆️</button>' +
-          '<button class="mini-btn" data-action="youth-edit" data-id="' + y.id + '" title="Bearbeiten">✏️</button>' +
-          '<button class="mini-btn" data-action="youth-del" data-id="' + y.id + '" title="Löschen">🗑️</button>' +
-        '</div></li>';
+        '</li>';
     }).join('');
   }
 
@@ -916,13 +1060,16 @@
       { k: 'tier', label: 'oder: Text aus dem Kadermenü', type: 'select',
         options: [{ v: '', t: '– kein Text gewählt –' }].concat(POTENTIAL_TIERS.map(t => ({ v: t.key, t: t.en + '  (' + rangeLabel(t) + ')' }))),
         value: '', hint: 'Nur nötig, wenn du weder Zahl noch Spanne siehst.' },
+      sternFeld('skills', 'Skill-Moves', src.skills),
+      sternFeld('weak', 'Schwacher Fuß', src.weak),
       { k: 'note', label: 'Notiz', type: 'textarea', value: src.note || '' }
     ], v => {
       if (!v.name) return;
       const ovr = parseInt(v.ovr, 10) || 0;
       const bereich = potBereich(v, ovr, y);
       const data = { name: v.name, pos: parsePositions(v.pos), age: parseInt(v.age, 10) || 0, ovr: ovr,
-                     potMin: bereich[0], potMax: bereich[1], note: v.note };
+                     potMin: bereich[0], potMax: bereich[1],
+                     skills: parseInt(v.skills, 10) || 0, weak: parseInt(v.weak, 10) || 0, note: v.note };
       if (y) Object.assign(y, data);
       else state.youth.push(Object.assign({ id: uid(), seasons: [] }, data));
       save('youth'); renderYouth();
@@ -955,7 +1102,13 @@
   function youthCompare(id) {
     const y = findYouth(id);
     if (!y) return;
-    if (!DB.ready) { openModal('<h3>Vergleich</h3><p class="hint">Datenbank lädt – gleich nochmal probieren.</p>'); loadDb(() => youthCompare(id)); return; }
+    if (!DB.ready) {
+      openModal('<h3>Vergleich</h3><p class="hint">Datenbank lädt – gleich nochmal probieren.</p>');
+      // Nur nachziehen, wenn der Nutzer noch im Jugend-Tab ist: sonst reißt das Fenster
+      // später über einer ganz anderen Ansicht wieder auf.
+      loadDb(() => { if (ui.tab === 'youth') youthCompare(id); });
+      return;
+    }
 
     const pos = (y.pos && y.pos[0]) || null;
     const posIdx = pos ? FC_POS.indexOf(pos) : -1;
@@ -1009,7 +1162,7 @@
     state.squad.players.push({
       id: uid(), name: y.name, pos: y.pos, ovr: y.ovr,
       potMin: y.potMin, potMax: y.potMax, age: y.age, club: 'aus der Jugend',
-      note: y.note, seasons: y.seasons || [], src: 'youth'
+      skills: y.skills, weak: y.weak, voll: y.voll, note: y.note, seasons: y.seasons || [], src: 'youth'
     });
     state.youth = state.youth.filter(x => x.id !== y.id);   // verlässt die Akademie
     save('squad'); save('youth'); renderYouth(); renderTeam();
@@ -1020,7 +1173,8 @@
   function youthFromDb(i) {
     const p = FC_PLAYERS[i];
     closeModal();
-    youthEdit(null, { name: p[F.SHORT], pos: pPos(i), age: p[F.AGE], ovr: p[F.OVR], potMin: p[F.POT], potMax: p[F.POT] });
+    youthEdit(null, { name: p[F.SHORT], pos: pPos(i), age: p[F.AGE], ovr: p[F.OVR],
+                      potMin: p[F.POT], potMax: p[F.POT], skills: p[F.SKILLS], weak: p[F.WEAK] });
   }
 
   // ===================== Tab: Potenzial =====================
@@ -1313,8 +1467,15 @@
     const id = btn.dataset.id;
     const cid = btn.dataset.cid;
     const slot = btn.dataset.slot != null ? +btn.dataset.slot : null;
+    // Einträge aus Menü und Info-Ansicht schließen erst das Fenster,
+    // sonst liegt es hinter dem Eingabedialog, der gleich aufgeht.
+    if (btn.dataset.close) closeModal();
 
     switch (a) {
+      case 'info-squad':     openSquadInfo(id); break;
+      case 'info-youth':     openYouthInfo(id); break;
+      case 'menu-squad':     openSquadMenu(id); break;
+      case 'menu-youth':     openYouthMenu(id); break;
       case 'careers':        openCareers(); break;
       case 'career-switch':  careerSwitch(cid); break;
       case 'career-new':     careerNew(); break;
