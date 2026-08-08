@@ -230,17 +230,10 @@ input, select { font-family: inherit; font-size: 16px; }
 .tier-prospect { border-left-color: var(--accent-2); }
 .tier-great    { border-left-color: var(--blue); }
 .tier-none     { border-left-color: var(--text-dim); }
-.tier-achieved { border-left-color: var(--purple); }
 .tier-en { font-weight: 700; }
 .tier-de { font-size: .82rem; color: var(--text-dim); font-style: italic; }
 .tier-range { float: right; font-weight: 800; font-size: 1.05rem; }
 .tier-unsure { display: block; margin-top: 5px; font-size: .74rem; color: var(--yellow-txt); }
-.calc-box {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 12px; margin-bottom: 10px;
-}
-.calc-out { margin-top: 10px; font-size: .9rem; }
-.calc-out b { font-size: 1.05rem; }
 .note-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .note-list li {
   background: var(--bg-card-2); border-radius: 10px; padding: 10px 12px; font-size: .85rem;

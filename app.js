@@ -1178,61 +1178,6 @@
   }
 
   // ===================== Tab: Potenzial =====================
-  function renderPotential() {
-    let html = POTENTIAL_TIERS.map(t =>
-      '<div class="tier-row ' + t.farbe + '">' +
-        '<span class="tier-range">' + rangeLabel(t) + '</span>' +
-        '<div class="tier-en">' + esc(t.en) + '</div>' +
-        '<div class="tier-de">' + esc(t.de) + '</div>' +
-        (t.unsicher ? '<span class="tier-unsure">⚠ ' + esc(t.unsicher) + '</span>' : '') +
-      '</div>').join('');
-    html += '<div class="tier-row tier-achieved">' +
-      '<span class="tier-range">90+</span>' +
-      '<div class="tier-en">' + esc(POTENTIAL_ACHIEVED.en) + '</div>' +
-      '<div class="tier-de">' + esc(POTENTIAL_ACHIEVED.de) + '</div>' +
-      '<span class="tier-unsure">' + esc(POTENTIAL_ACHIEVED.hinweis) + '</span></div>';
-    $('#tierTable').innerHTML = html;
-
-    $('#calcTier').innerHTML = POTENTIAL_TIERS.map(t => '<option value="' + t.key + '">' + esc(t.en) + '</option>').join('');
-    $('#potNotes').innerHTML = POTENTIAL_HINWEISE.map(h => '<li>' + h + '</li>').join('');
-    calcTier(); calcNum();
-  }
-
-  function calcTier() {
-    const t = POTENTIAL_TIERS.find(x => x.key === $('#calcTier').value);
-    if (!t) return;
-    let html = '<b>' + rangeLabel(t) + '</b> Potenzial &nbsp;·&nbsp; „' + esc(t.de) + '“';
-    if (t.unsicher) html += '<div class="tier-unsure">⚠ ' + esc(t.unsicher) + '</div>';
-    if (DB.ready) {
-      let n = 0, beispiele = [];
-      for (let i = 0; i < FC_PLAYERS.length; i++) {
-        const pot = FC_PLAYERS[i][F.POT];
-        if (pot >= t.min && pot <= t.max) { n++; if (FC_PLAYERS[i][F.AGE] <= 21) beispiele.push(i); }
-      }
-      beispiele.sort((a, b) => FC_PLAYERS[b][F.POT] - FC_PLAYERS[a][F.POT]);
-      html += '<div class="hint" style="margin-top:8px">' + n.toLocaleString('de-DE') +
-        ' Spieler der Datenbank liegen in diesem Bereich.</div>';
-      if (beispiele.length) {
-        html += '<div class="hint">Beispiele bis 21 Jahre:</div><ul class="card-list">' +
-          beispiele.slice(0, 5).map(cardHtml).join('') + '</ul>';
-      }
-    } else {
-      loadDb(calcTier);
-    }
-    $('#calcTierOut').innerHTML = html;
-  }
-
-  function calcNum() {
-    const v = parseInt($('#calcNum').value, 10);
-    const out = $('#calcNumOut');
-    if (isNaN(v)) { out.innerHTML = '<span class="hint">Zahl eingeben, um den Text zu sehen.</span>'; return; }
-    const t = tierFor(v);
-    let html = 'Im Spiel steht: <b>' + esc(t.en) + '</b><div class="tier-de">' + esc(t.de) + '</div>';
-    if (tierGrenzfall(v)) html += '<div class="tier-unsure">⚠ ' + v + ' liegt auf einer unsicheren Grenze – ' + esc(t.unsicher || '') + '</div>';
-    if (v < 60) html += '<div class="tier-unsure">Bei so niedrigem Potenzial liegt der Overall zwangsläufig unter 60 – dann zeigt das Spiel ohnehin keinen Potenzial-Text an.</div>';
-    out.innerHTML = html;
-  }
-
   // ===================== Eingabe-Dialog =====================
   let promptCb = null;
   function openPrompt(title, fields, cb) {
@@ -1277,7 +1222,6 @@
     if (tab === 'db')       { loadDb(runDbFilter); if (DB.ready && !dbHits.length) runDbFilter(); }
     if (tab === 'team')     renderTeam();
     if (tab === 'youth')    renderYouth();
-    if (tab === 'potential') renderPotential();
   }
 
   // ===================== Karriere-Stände =====================
@@ -1445,7 +1389,7 @@
   }
 
   function renderAll() {
-    renderTeam(); renderYouth(); renderPotential();
+    renderTeam(); renderYouth();
   }
 
   // ===================== Events =====================
@@ -1539,8 +1483,6 @@
   });
   $('#filterBox').addEventListener('change', debounce(runDbFilter, 60));
   $('#filterBox').addEventListener('input', debounce(runDbFilter, 300));
-  $('#calcTier').addEventListener('change', calcTier);
-  $('#calcNum').addEventListener('input', debounce(calcNum, 150));
   window.addEventListener('resize', syncHeaderHeight);
 
   // ===================== Start =====================

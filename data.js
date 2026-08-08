@@ -5,6 +5,9 @@
    Die Texte, die im Kadermenü / Scout-Bericht unter dem Spieler stehen.
    Das Spiel des Nutzers läuft auf Englisch -> englischer Text ist führend.
 
+   Genutzt an zwei Stellen: als Auswahlfeld in den Formularen (Text -> Zahlenbereich)
+   und im Detail-Fenster eines Datenbank-Spielers (Zahl -> Text).
+
    WICHTIG: Die Grenzen sind in den Quellen NICHT einheitlich (deutsche und englische
    Guides widersprechen sich um 1 Punkt). "unsicher" markiert genau diese Randwerte.
    Wer im Spiel einen Grenzfall sieht, korrigiert einfach die Zahl hier. */
@@ -41,19 +44,6 @@ const POTENTIAL_TIERS = [
     unsicher: '',
     farbe: 'tier-none'
   }
-];
-
-/* Kein Potenzial-Hinweis, sondern eine Aussage über das JETZT. */
-const POTENTIAL_ACHIEVED = {
-  en: 'Is one of the best in the world',
-  de: 'Einer der besten der Welt',
-  hinweis: 'Das sagt nichts über das Potenzial – der Spieler hat bereits 90+ Overall erreicht.'
-};
-
-const POTENTIAL_HINWEISE = [
-  'Die Potenzial-Texte erscheinen erst, wenn ein Spieler <b>60 Overall</b> erreicht hat. Ein 55er-Talent zeigt gar nichts an – das heißt nicht, dass es schlecht ist.',
-  'Potenzial ist <b>dynamisch</b>: Es steigt oder fällt im Verlauf der Karriere, je nach Einsatzzeit, Training und erfüllten Vertragsforderungen. Der Text kann sich also ändern.',
-  'Im Scout-Bericht der Jugendakademie steht statt eines Textes oft ein <b>Zahlenbereich</b> (z. B. 78–91). Je besser das Urteilsvermögen des Scouts, desto enger der Bereich.'
 ];
 
 /* ---------- Aufstellungen ----------
