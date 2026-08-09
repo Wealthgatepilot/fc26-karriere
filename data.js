@@ -101,6 +101,12 @@ const FORMATIONS = {
   ]
 };
 
+/* Sortierreihenfolge der Positionen – exakt wie EA selbst sortiert (rechts vor links),
+   damit man sich in Spiel und App gleich zurechtfindet.
+   Quelle: interne FIFA-Positions-IDs (GK 0, RWB 2, RB 3, CB 5, LB 7, LWB 8, CDM 10,
+   RM 12, CM 14, LM 16, CAM 18, RW 23, ST 25, LW 27). */
+const POS_SORT = ['GK', 'RB', 'CB', 'LB', 'CDM', 'RM', 'CM', 'LM', 'CAM', 'RW', 'LW', 'ST'];
+
 /* Welche Position passt zu welcher? Für die Farbmarkierung in der Aufstellung. */
 const POS_VERWANDT = {
   GK:  [],

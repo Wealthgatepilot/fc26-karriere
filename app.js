@@ -467,33 +467,59 @@
     }).join('');
   }
 
-  // Eine Karte für Kader- und Leih-Ansicht. Name öffnet die Infos, ⋮ das Aktionsmenü –
-  // dadurch bleibt in der Zeile Platz für den Namen statt für drei Knöpfe.
-  function squadCard(p) {
-    const wachs = p.potMin === p.potMax ? p.potMax - p.ovr : 0;
-    const herkunft = p.src === 'youth' ? ' · 🌱 Jugend' : p.src === 'manual' ? ' · ✏️ selbst' : '';
-    return '<li class="p-card' + (p.loan ? ' on-loan' : '') + '">' +
-      '<button class="name-btn" data-action="info-squad" data-id="' + p.id + '">' +
-        '<div class="p-name">' + esc(anzeigeName(p)) + '</div>' +
-        '<div class="p-meta">' + (p.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
-          ' ' + (p.age || '?') + ' J.' + (p.club ? ' · ' + esc(p.club) : '') + herkunft + '</div>' +
-        (p.loan ? '<div class="loan-strip">📤 verliehen – 📥 Rückkehr im Menü eintragen</div>' : '') +
-      '</button>' +
-      '<div class="p-rat-wrap"><div class="p-rat">' +
-        '<span class="p-ovr ' + ratClass(p.ovr) + '">' + p.ovr + '</span>' +
-        '<span class="p-arrow">→</span><span class="p-pot">' + potLabel(p) + '</span></div>' +
-        (wachs > 0 ? '<span class="p-growth">+' + wachs + '</span>' : '') + '</div>' +
-      '<button class="menu-btn" data-action="menu-squad" data-id="' + p.id + '" title="Menü">⋮</button>' +
+  // ===================== Tabellen-Ansicht =====================
+  const posRang = p => { const i = POS_SORT.indexOf(p); return i < 0 ? 99 : i; };
+  const hauptPos = p => (p.pos && p.pos[0]) || '';
+
+  // Zweite Sortierstufe hält gleiche Werte in einer nachvollziehbaren Ordnung;
+  // rev dreht am Ende alles um, damit ein zweiter Klick wirklich die Umkehrung zeigt.
+  function sortiere(liste, s) {
+    const nachPos = (a, b) => posRang(hauptPos(a)) - posRang(hauptPos(b)) || b.ovr - a.ovr;
+    const nachOvr = (a, b) => a.ovr - b.ovr || posRang(hauptPos(a)) - posRang(hauptPos(b));
+    const sortiert = liste.slice().sort(s.feld === 'ovr' ? nachOvr : nachPos);
+    return s.rev ? sortiert.reverse() : sortiert;
+  }
+
+  function setSort(s, feld) {
+    if (s.feld === feld) s.rev = !s.rev;
+    else { s.feld = feld; s.rev = false; }
+  }
+
+  function tabellenKopf(art, s) {
+    const pfeil = f => s.feld === f ? (s.rev ? ' ↓' : ' ↑') : '';
+    return '<li class="tbl-head">' +
+      '<button class="th' + (s.feld === 'pos' ? ' aktiv' : '') + '" data-action="sort-' + art + '" data-feld="pos">Pos' + pfeil('pos') + '</button>' +
+      '<span class="th">Name</span>' +
+      '<button class="th rechts' + (s.feld === 'ovr' ? ' aktiv' : '') + '" data-action="sort-' + art + '" data-feld="ovr">OVR' + pfeil('ovr') + '</button>' +
+      '<span class="th"></span></li>';
+  }
+
+  function tabellenZeile(o, art, zusatz) {
+    return '<li class="' + (o.loan ? 'on-loan' : '') + '">' +
+      '<span class="r-pos">' + esc(hauptPos(o) || '–') + '</span>' +
+      '<button class="r-name" data-action="info-' + art + '" data-id="' + o.id + '">' +
+        esc(anzeigeName(o)) + (zusatz || '') + '</button>' +
+      '<span class="r-ovr ' + ratClass(o.ovr) + '">' + o.ovr + '</span>' +
+      '<button class="menu-btn" data-action="menu-' + art + '" data-id="' + o.id + '" title="Menü">⋮</button>' +
       '</li>';
   }
 
   function renderSquadList() {
-    const list = state.squad.players.slice().sort((a, b) => b.ovr - a.ovr);
-    const verliehen = list.filter(p => p.loan).length;
+    const ul = $('#squadList');
+    const verliehen = state.squad.players.filter(p => p.loan).length;
     $('#squadInfo').textContent = state.squad.players.length
       ? state.squad.players.length + ' Spieler im Kader' + (verliehen ? ' · ' + verliehen + ' verliehen' : '')
       : 'Noch kein Spieler im Kader – über Suche, Datenbank oder Jugend hinzufügen.';
-    $('#squadList').innerHTML = list.map(squadCard).join('');
+    if (!state.squad.players.length) {
+      ul.className = 'card-list';
+      ul.innerHTML = '';
+      return;
+    }
+    ul.className = 'tbl';
+    ul.innerHTML = tabellenKopf('squad', ui.sortSquad) +
+      sortiere(state.squad.players, ui.sortSquad)
+        .map(p => tabellenZeile(p, 'squad', p.loan ? ' <span class="zeile-badge">📤</span>' : ''))
+        .join('');
   }
 
   // ===================== Aktionsmenü (⋮) =====================
@@ -575,7 +601,7 @@
       '<div class="md-sub">' + (anzeigeName(p) === p.name ? '' : esc(p.name) + (p.club ? ' · ' : '')) +
         (p.club ? esc(p.club) : '') + '</div></div></div>' +
       (p.loan ? '<div class="loan-box">📤 Aktuell verliehen – trage nach Rückkehr oder Abbruch den Zuwachs ein.</div>' : '') +
-      infoGrid(p);
+      infoGrid(p) + (p.potMax > p.ovr ? wachstumsBalken(p) : '');
     if (log.length) {
       html += '<div class="section-divider">Leihen</div><ul class="note-list">' +
         log.map((x, i) => '<li>' + (i + 1) + '. Leihe: Overall ' + vz(x.ovr || 0) +
@@ -599,9 +625,7 @@
       '<div class="md-sub">' + (anzeigeName(y) === y.name ? '' : esc(y.name) + ' · ') +
         'Jugendakademie</div></div></div>' +
       (zuJung(y) ? '<div class="loan-box">⏳ Mit ' + y.age + ' noch zu jung – hochziehen geht ab ' + HOCHZIEH_ALTER + '.</div>' : '') +
-      infoGrid(y) +
-      '<p class="hint">Noch ' + Math.max(0, (y.potMax >= 99 && y.potMin !== y.potMax ? y.potMin : y.potMax) - y.ovr) +
-        ' Punkte Luft nach oben.</p>' +
+      infoGrid(y) + wachstumsBalken(y) +
       seasonListHtml(y.seasons);
     if (y.note) html += '<div class="section-divider">Notiz</div><p class="hint">' + esc(y.note) + '</p>';
     html += '<div class="md-actions">' +
@@ -1008,38 +1032,30 @@
   function renderYouth() {
     const ul = $('#youthList');
     if (!state.youth.length) {
+      ul.className = 'card-list';
       ul.innerHTML = '<li class="hint">Noch keine Jugendspieler angelegt.</li>';
       return;
     }
-    ul.innerHTML = state.youth.map(y => {
-      const spanne = 99 - 40;
-      const startPct = Math.max(0, (y.ovr - 40) / spanne * 100);
-      const potPct   = Math.max(0, (y.potMax - 40) / spanne * 100);
-      const minPct   = Math.max(0, (y.potMin - 40) / spanne * 100);
-      const jung = zuJung(y);
-      const anzahl = (y.seasons || []).length;
+    ul.className = 'tbl';
+    ul.innerHTML = tabellenKopf('youth', ui.sortYouth) +
+      sortiere(state.youth, ui.sortYouth)
+        .map(y => tabellenZeile(y, 'youth',
+          zuJung(y) ? ' <span class="zeile-badge">⏳</span>' : ''))
+        .join('');
+  }
 
-      return '<li class="y-card' + (jung ? ' too-young' : '') + '">' +
-        '<div class="y-head">' +
-          '<button class="name-btn" data-action="info-youth" data-id="' + y.id + '">' +
-            '<div class="p-name">' + esc(anzeigeName(y)) +
-              (jung ? ' <span class="wait-badge">⏳ ab ' + HOCHZIEH_ALTER + '</span>' : '') + '</div>' +
-            '<div class="p-meta">' + (y.pos || []).map(x => '<span class="pos-tag">' + x + '</span>').join('') +
-              ' ' + (y.age || '?') + ' J.' +
-              (anzahl ? ' · 📈 ' + anzahl + (anzahl === 1 ? ' Saison' : ' Saisons') : '') + '</div>' +
-          '</button>' +
-          '<div class="p-rat"><span class="p-ovr ' + ratClass(y.ovr) + '">' + y.ovr + '</span>' +
-            '<span class="p-arrow">→</span><span class="p-pot">' + potLabel(y) + '</span></div>' +
-          '<button class="menu-btn" data-action="menu-youth" data-id="' + y.id + '" title="Menü">⋮</button>' +
-        '</div>' +
-        '<div class="growth-bar"><i style="width:' + startPct + '%"></i>' +
-          '<u style="left:' + Math.min(startPct, minPct) + '%;width:' + Math.max(0, potPct - Math.min(startPct, minPct)) + '%"></u></div>' +
-        '<div class="growth-lbl"><span>' + y.ovr + ' jetzt</span><span>' +
-          (y.potMax >= 99 && y.potMin !== y.potMax
-            ? 'noch mindestens ' + Math.max(0, y.potMin - y.ovr) + ' möglich'
-            : 'noch ' + Math.max(0, y.potMax - y.ovr) + ' möglich') + '</span></div>' +
-        '</li>';
-    }).join('');
+  // Wachstumsbalken: aus der Zeile in die Info-Ansicht gewandert
+  function wachstumsBalken(o) {
+    const spanne = 99 - 40;
+    const startPct = Math.max(0, (o.ovr - 40) / spanne * 100);
+    const potPct   = Math.max(0, (o.potMax - 40) / spanne * 100);
+    const minPct   = Math.max(0, (o.potMin - 40) / spanne * 100);
+    return '<div class="growth-bar"><i style="width:' + startPct + '%"></i>' +
+      '<u style="left:' + Math.min(startPct, minPct) + '%;width:' + Math.max(0, potPct - Math.min(startPct, minPct)) + '%"></u></div>' +
+      '<div class="growth-lbl"><span>' + o.ovr + ' jetzt</span><span>' +
+      (o.potMax >= 99 && o.potMin !== o.potMax
+        ? 'noch mindestens ' + Math.max(0, o.potMin - o.ovr) + ' möglich'
+        : 'noch ' + Math.max(0, o.potMax - o.ovr) + ' möglich') + '</span></div>';
   }
 
   const findYouth = id => state.youth.find(y => y.id === id);
@@ -1208,7 +1224,12 @@
   }
 
   // ===================== Navigation =====================
-  const ui = { tab: 'search' };
+  // Sortierung gilt je Ansicht und startet auf Position, aufsteigend GK -> ST
+  const ui = {
+    tab: 'search',
+    sortSquad: { feld: 'pos', rev: false },
+    sortYouth: { feld: 'pos', rev: false }
+  };
 
   function syncHeaderHeight() {
     document.documentElement.style.setProperty('--header-h', $('#appHeader').offsetHeight + 'px');
@@ -1416,6 +1437,8 @@
     if (btn.dataset.close) closeModal();
 
     switch (a) {
+      case 'sort-squad':     setSort(ui.sortSquad, btn.dataset.feld); renderSquadList(); break;
+      case 'sort-youth':     setSort(ui.sortYouth, btn.dataset.feld); renderYouth(); break;
       case 'info-squad':     openSquadInfo(id); break;
       case 'info-youth':     openYouthInfo(id); break;
       case 'menu-squad':     openSquadMenu(id); break;

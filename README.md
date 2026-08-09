@@ -11,9 +11,13 @@ Reines HTML/CSS/JS, **kein Build-Schritt**, läuft über GitHub Pages und ist of
 - **Potenzial-Umrechnung:** Die Texte aus dem Kadermenü sind direkt dort eingebaut, wo sie gebraucht
   werden – als Auswahlfeld in den Formularen (Text → Zahlenbereich) und im Detail-Fenster eines
   Datenbank-Spielers (Zahl → Text). Die Stufen stehen editierbar in `data.js`.
-- **Karten-Bedienung:** Namen erscheinen überall als „T. Müller“. Ein Tipp auf den Namen öffnet die
-  Info-Ansicht (alle Werte, Skill-Moves und schwacher Fuß als Sterne, Leih- und Saison-Verlauf, Notiz),
-  das **⋮-Menü** rechts bündelt alle Aktionen. Verliehene Spieler sind farbig abgesetzt.
+- **Tabellen-Ansicht:** Kader und Jugend stehen als Tabelle **Pos · Name · OVR · ⋮**. Ein Klick auf
+  „Pos“ sortiert in der Reihenfolge, die EA selbst benutzt (GK, RB, CB, LB, CDM, RM, CM, LM, CAM,
+  RW, LW, ST), ein zweiter Klick dreht sie um; „OVR“ sortiert erst den schwächsten nach oben, beim
+  zweiten Klick den stärksten. Namen erscheinen als „T. Müller“ – außer bei ostasiatischer
+  Namensreihenfolge, dort bleibt der Name ganz. Ein Tipp auf den Namen öffnet die Info-Ansicht
+  (alle Werte, Sterne, Wachstumsbalken, Leih- und Saison-Verlauf, Notiz), das ⋮ das Aktionsmenü.
+  Verliehene Spieler sind gelb hinterlegt.
 - **Leihe:** Eigener Unterreiter im Team-Tab. Markiert Spieler als verliehen, trägt nach Rückkehr oder Abbruch den Overall- und Potenzial-Zuwachs ein (auch negativ) und zählt die Leihen je Spieler mit. Dazu eine nach Luft nach oben und Alter sortierte Kandidatenliste und die Schritt-für-Schritt-Anleitung zum Leih-Glitch samt Warnung, dass es ein Bug ist.
 - **Karriere-Stände:** Oben im Kopf lässt sich zwischen mehreren Karrieren umschalten – jede mit eigenem Kader, eigener Aufstellung und eigenen Talenten. Anlegen, umbenennen, kopieren, löschen. Gespeichert wird automatisch, kein JSON-Hin-und-Her nötig.
 - **Potenzial als Zahl oder Text:** Überall, wo du ein Potenzial einträgst, kannst du entweder die genaue Zahl (Scout-Bericht) oder den Text aus dem Kadermenü angeben – der Text wird in seinen Zahlenbereich übersetzt und als solcher angezeigt (z. B. `85–89`).
