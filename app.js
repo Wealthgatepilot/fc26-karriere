@@ -92,7 +92,7 @@
     'tang', 'xiao', 'dai', 'ding', 'cheng', 'pan', 'yuan', 'yao', 'lu', 'zeng', 'fu', 'zhong',
     'jia', 'qiu', 'meng', 'qin', 'shi', 'hou', 'bai', 'cui', 'kong', 'mao', 'duan', 'chow'];
 
-  function kurzName(n, sicherWestlich) {
+  function kurzName(n) {
     const s = (n == null ? '' : String(n)).trim();
     if (!s || /^\S\.\s/.test(s)) return s;
     const teile = s.split(/\s+/);
@@ -101,23 +101,29 @@
     if (teile.length === 2 && NAMENS_SUFFIXE.indexOf(teile[1].toLowerCase()) >= 0) return s;
     const erst = teile[0].toLowerCase().replace(/[.,]$/, '');
     if (NAME_PARTIKEL.indexOf(erst) >= 0) return s;
-    // Nur wo die Herkunft des Namens unbekannt ist, wird die Namensliste befragt.
-    // Bei Datenbank-Spielern entscheidet stattdessen der Langname (siehe anzeigeName).
-    if (!sicherWestlich && OSTASIEN_NACHNAMEN.indexOf(erst) >= 0) return s;
+    if (OSTASIEN_NACHNAMEN.indexOf(erst) >= 0) return s;
     return teile[0].charAt(0).toUpperCase() + '. ' + teile.slice(1).join(' ');
   }
 
-  // voll === true  -> Langname enthält CJK/Hangul, Familienname steht vorn: nie abkürzen
-  // voll === false -> Datenbank-Spieler, nachweislich westliche Reihenfolge
-  // voll undefined -> selbst eingetippt oder Altbestand: vorsichtige Variante
-  function anzeigeName(p) {
-    if (!p) return '';
-    if (p.voll === true) return p.name;
-    return kurzName(p.name, p.voll === false);
-  }
+  // voll === true -> Langname belegt asiatische Namensreihenfolge, nie abkürzen.
+  // Sonst entscheidet kurzName mit seinen beiden Namenslisten.
+  const anzeigeName = p => !p ? '' : (p.voll === true ? p.name : kurzName(p.name));
 
   // Hiragana/Katakana, CJK-Ideogramme, Hangul – Kennzeichen für asiatische Namensreihenfolge
   const CJK = new RegExp('[\\u3040-\\u30ff\\u3400-\\u9fff\\uac00-\\ud7af]');
+  const CJK_G = new RegExp('[\\u3040-\\u30ff\\u3400-\\u9fff\\uac00-\\ud7af]', 'g');
+
+  // Steht der Familienname vorn? Zwei Belege aus den Daten selbst, keine Rateliste:
+  // CJK-Zeichen im Langnamen, oder der Langname ist die gedrehte Schreibweise
+  // ("Kim Min Jae" / "Min Jae Kim" – der Langname endet auf den Familiennamen).
+  function asiatischeReihenfolge(kurz, lang) {
+    if (!lang) return false;
+    if (CJK.test(lang)) return true;
+    const k = String(kurz).trim().split(/\s+/);
+    const l = String(lang).replace(CJK_G, ' ').trim().split(/\s+/);
+    if (k.length < 2 || l.length < 2) return false;
+    return l[l.length - 1].toLowerCase() === k[0].toLowerCase();
+  }
   const vz = n => (n >= 0 ? '+' + n : String(n));
 
   const sterne = n => '★'.repeat(Math.max(0, Math.min(5, n || 0))) + '☆'.repeat(5 - Math.max(0, Math.min(5, n || 0)));
@@ -495,11 +501,16 @@
   }
 
   function tabellenZeile(o, art, zusatz) {
+    // Aktueller Wert und Potenzial teilen sich eine Zelle – bei erreichtem Potenzial
+    // wäre "89 › 89" nur Rauschen, dann steht die Zahl allein.
+    const pot = potLabel(o);
+    const gleich = String(o.ovr) === pot;
     return '<li class="' + (o.loan ? 'on-loan' : '') + '">' +
       '<span class="r-pos">' + esc(hauptPos(o) || '–') + '</span>' +
       '<button class="r-name" data-action="info-' + art + '" data-id="' + o.id + '">' +
         esc(anzeigeName(o)) + (zusatz || '') + '</button>' +
-      '<span class="r-ovr ' + ratClass(o.ovr) + '">' + o.ovr + '</span>' +
+      '<span class="r-rat"><span class="r-ovr ' + ratClass(o.ovr) + '">' + o.ovr + '</span>' +
+        (gleich ? '' : '<span class="r-sep">›</span><span class="r-pot">' + pot + '</span>') + '</span>' +
       '<button class="menu-btn" data-action="menu-' + art + '" data-id="' + o.id + '" title="Menü">⋮</button>' +
       '</li>';
   }
@@ -664,7 +675,7 @@
       '<div class="stat-box"><div class="s-val">' + avg(all, p => p.ovr) + '</div><div class="s-lbl">Ø Overall Kader</div></div>' +
       '<div class="stat-box"><div class="s-val">' + avg1(all, p => p.age || 0) + '</div><div class="s-lbl">Ø Alter</div></div>' +
       '<div class="stat-box"><div class="s-val">' + avg(all, p => p.potMax) + '</div><div class="s-lbl">Ø Potenzial (Obergrenze)</div></div>' +
-      '<div class="stat-box"><div class="s-val" style="color:var(--accent-2)">+' + reserve + '</div>' +
+      '<div class="stat-box"><div class="s-val" style="color:var(--accent-txt)">+' + reserve + '</div>' +
         '<div class="s-lbl">Wachstumsreserve gesamt</div></div>' +
       '<div class="stat-box"><div class="s-val">' + all.filter(p => (p.age || 99) <= 21).length + '</div>' +
         '<div class="s-lbl">Spieler bis 21 Jahre</div></div>' +
@@ -850,8 +861,7 @@
     name: FC_PLAYERS[i][F.SHORT], pos: pPos(i), ovr: FC_PLAYERS[i][F.OVR],
     potMin: FC_PLAYERS[i][F.POT], potMax: FC_PLAYERS[i][F.POT], age: FC_PLAYERS[i][F.AGE], club: pClub(i),
     weak: FC_PLAYERS[i][F.WEAK], skills: FC_PLAYERS[i][F.SKILLS],
-    // Langname mit CJK/Hangul heißt: Familienname steht vorn – dann nie abkürzen
-    voll: CJK.test(FC_PLAYERS[i][F.LONG] || ''), src: 'db'
+    voll: asiatischeReihenfolge(FC_PLAYERS[i][F.SHORT], FC_PLAYERS[i][F.LONG]), src: 'db'
   });
 
   // 1–5 Sterne als Auswahlfeld für die Eingabedialoge

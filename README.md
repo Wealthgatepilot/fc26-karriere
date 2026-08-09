@@ -11,7 +11,9 @@ Reines HTML/CSS/JS, **kein Build-Schritt**, läuft über GitHub Pages und ist of
 - **Potenzial-Umrechnung:** Die Texte aus dem Kadermenü sind direkt dort eingebaut, wo sie gebraucht
   werden – als Auswahlfeld in den Formularen (Text → Zahlenbereich) und im Detail-Fenster eines
   Datenbank-Spielers (Zahl → Text). Die Stufen stehen editierbar in `data.js`.
-- **Tabellen-Ansicht:** Kader und Jugend stehen als Tabelle **Pos · Name · OVR · ⋮**. Ein Klick auf
+- **Tabellen-Ansicht:** Kader und Jugend stehen als Tabelle **Pos · Name · OVR › POT · ⋮**.
+  Die Rating-Zelle zeigt beides („74 › 84“, bei einer Spanne „63 › 80–92“); ist das Potenzial
+  erreicht, steht nur die eine Zahl da. Ein Klick auf
   „Pos“ sortiert in der Reihenfolge, die EA selbst benutzt (GK, RB, CB, LB, CDM, RM, CM, LM, CAM,
   RW, LW, ST), ein zweiter Klick dreht sie um; „OVR“ sortiert erst den schwächsten nach oben, beim
   zweiten Klick den stärksten. Namen erscheinen als „T. Müller“ – außer bei ostasiatischer
